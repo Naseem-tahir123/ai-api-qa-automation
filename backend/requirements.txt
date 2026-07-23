@@ -1,8 +1,0 @@
-#requirements.txt
-fastapi
-uvicorn[standard]
-pydantic
-langgraph
-httpx
-faker
-langchain-openai
