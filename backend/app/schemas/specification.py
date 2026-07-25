@@ -10,3 +10,11 @@ class APISpecificationResponse(BaseModel):
     uploaded_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class EndpointResponse(BaseModel):
+    id: int
+    path: str
+    method: str
+    summary: str | None
+
+    model_config = ConfigDict(from_attributes=True)

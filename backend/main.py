@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api.routes import projects
+from app.api.routes import projects, specifications
 
 app = FastAPI(title="AI API QA Automation Platform", version="1.0")
 
@@ -10,6 +10,7 @@ def health_check():
 
 # Apne API routers ko app mein jor dein (Include karein)
 app.include_router(projects.router)
+app.include_router(specifications.router)
 
 if __name__ == "__main__":
     import uvicorn

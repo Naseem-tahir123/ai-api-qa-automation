@@ -16,3 +16,4 @@ class APISpecification(Base):
 
     # Relationship setup (Ek spec kis project se belong karti hai)
     project = relationship("Project", back_populates="specifications")
+    endpoints = relationship("Endpoint", back_populates="specification", cascade="all, delete-orphan")
