@@ -18,3 +18,4 @@ class Endpoint(Base):
 
     # Relationship setup
     specification = relationship("APISpecification", back_populates="endpoints")
+    test_cases    = relationship("TestCase", back_populates="endpoint", cascade="all, delete-orphan")
