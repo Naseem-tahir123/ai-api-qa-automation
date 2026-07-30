@@ -7,13 +7,11 @@ from app.db.database import get_db
 from app.models.endpoint import Endpoint
 from app.models.test_case import TestCase
 from app.schemas.test_case import TestCaseResponse
-from app.services.ai_generator import AITestGenerator
+from app.services.ai_generator import AITestGenerator, get_ai_generator
 
 router = APIRouter(prefix="/api/v1/test-cases", tags=["Test Cases"])
-ai_generator = AITestGenerator()
-
 @router.post("/generate/{endpoint_id}", response_model=List[TestCaseResponse])
-async def generate_tests_for_endpoint(endpoint_id: int, db: AsyncSession = Depends(get_db)):
+async def generate_tests_for_endpoint(endpoint_id: int, db: AsyncSession = Depends(get_db), ai_gen: AITestGenerator = Depends(get_ai_generator)):
     # 1. Database se Endpoint nikalein (Jiske test cases bananey hain)
     result = await db.execute(select(Endpoint).filter(Endpoint.id == endpoint_id))
     endpoint = result.scalar_one_or_none()
@@ -23,7 +21,7 @@ async def generate_tests_for_endpoint(endpoint_id: int, db: AsyncSession = Depen
 
     # 2. AI ko Endpoint ka data bhejein
     try:
-        ai_test_cases = ai_generator.generate_test_cases(
+        ai_test_cases = ai_gen.generate_test_cases(
             method=endpoint.method,
             path=endpoint.path,
             request_schema=endpoint.request_schema,

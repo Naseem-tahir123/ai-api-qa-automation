@@ -56,3 +56,6 @@ class AITestGenerator:
         })
 
         return result.test_cases
+
+def get_ai_generator():
+    return AITestGenerator()

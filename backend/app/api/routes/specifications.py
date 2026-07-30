@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import delete
 from typing import List
 
 from app.db.database import get_db
@@ -11,28 +12,27 @@ from app.services.parser import OpenAPIParser
 
 router = APIRouter(prefix="/api/v1/specifications", tags=["Specifications"])
 
+
 @router.post("/{spec_id}/parse", response_model=List[EndpointResponse])
 async def parse_specification(spec_id: int, db: AsyncSession = Depends(get_db)):
-    # 1. Check karein ke specification exist karti hai ya nahi
+    # 1. Check whether the specification exists.
     result = await db.execute(select(APISpecification).filter(APISpecification.id == spec_id))
     spec = result.scalar_one_or_none()
-    
+
     if not spec:
         raise HTTPException(status_code=404, detail="Specification not found")
 
     try:
-        # 2. File ko parse karein using Parser Service
+        # 2. Parse the specification file using the OpenAPI parser service.
         parsed_endpoints = OpenAPIParser.parse_spec(spec.file_path)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
 
-    # 3. Purane endpoints (agar koi thay) delete kar dein taake duplicate na hon
-    delete_stmt = select(Endpoint).filter(Endpoint.specification_id == spec_id)
-    old_endpoints = await db.execute(delete_stmt)
-    for old_ep in old_endpoints.scalars().all():
-        await db.delete(old_ep)
-    
-    # 4. Naye endpoints ko Database mein add karein
+    # 3. Remove any previously parsed endpoints to avoid duplicates.
+    await db.execute(delete(Endpoint).where(Endpoint.specification_id == spec_id))
+    await db.commit()
+
+    # 4. Store the newly parsed endpoints in the database.
     new_db_endpoints = []
     for ep_data in parsed_endpoints:
         new_ep = Endpoint(
@@ -45,8 +45,8 @@ async def parse_specification(spec_id: int, db: AsyncSession = Depends(get_db)):
         )
         db.add(new_ep)
         new_db_endpoints.append(new_ep)
-        
+
     await db.commit()
-    
-    # 5. Saved endpoints wapis return karein
+
+    # 5. Return the newly saved endpoints.
     return new_db_endpoints
