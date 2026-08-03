@@ -70,19 +70,55 @@ OpenAPI file upload
    uv sync
    ```
 
-4. Apply database migrations.
+4. Add JWT settings to the `.env` file.
+
+   ```env
+   SECRET_KEY=your_secret_key_here
+   ALGORITHM=HS256
+   ```
+
+5. Apply database migrations.
 
    ```powershell
    uv run alembic upgrade head
    ```
 
-5. Start the API server.
+6. Start the API server.
 
    ```powershell
    uv run python main.py
    ```
 
 The service starts at `http://localhost:8000`. Interactive Swagger documentation is available at `http://localhost:8000/docs`.
+
+### Authentication endpoints
+
+#### Signup
+
+```http
+POST /api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "username": "demo_user",
+  "password": "strong_password"
+}
+```
+
+#### Login
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "strong_password"
+}
+```
+
+The login response returns a JWT access token that can be used in the `Authorization: Bearer ...` header for protected routes later.
 
 ## API workflow
 

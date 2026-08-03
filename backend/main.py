@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api.routes import projects, specifications, test_cases, test_execution, reports
+from app.api.routes import auth, projects, specifications, test_cases, test_execution, reports
 
 app = FastAPI(title="AI API QA Automation Platform", version="1.0")
 
@@ -9,6 +9,7 @@ def health_check():
     return {"status": "healthy", "message": "Backend and Database are connected!"}
 
 # Apne API routers ko app mein jor dein (Include karein)
+app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(specifications.router)
 app.include_router(test_cases.router)
