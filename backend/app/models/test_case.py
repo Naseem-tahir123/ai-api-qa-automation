@@ -10,6 +10,8 @@ class TestCase(Base):
     category = Column(String, nullable=False) # e.g., "Positive", "Negaative", "Boundary"
     description = Column(String, nullable=False) # Detail of test case
     payload = Column(JSON, nullable=True) # Request Body (Faker/AI generated data)
+    path_params = Column(JSON, nullable=True) # Path parameters (Faker/AI generated data)
+    query_params = Column(JSON, nullable=True) # Query parameters (Faker/AI generated data)
     expected_status = Column(Integer, nullable=False)  # e.g., 200, 201, 400
 
     endpoint = relationship("Endpoint", back_populates="test_cases")

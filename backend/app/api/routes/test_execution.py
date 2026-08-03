@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from typing import Optional, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -11,10 +13,17 @@ from app.models.specification import APISpecification
 
 router = APIRouter(prefix="/api/v1/execution", tags=["Test Execution"])
 
+class ExecutionRequest(BaseModel):
+    target_base_url: str
+    auth_config: Optional[Dict[str, str]] = {
+        "token": "YourBearerTokenHere",
+        "api_key": "YourAPIKeyHere"
+    }  # e.g., {"token": "eyJhbG..."}
+
 @router.post("/run/{endpoint_id}", response_model=ExecutionSummary)
 async def execute_tests(
     endpoint_id: int, 
-    target_base_url: str = Query(..., description="Target Server Base URL (e.g. https://httpbin.org)"),
+    request: ExecutionRequest,
     db: AsyncSession = Depends(get_db)
 ):
     # 1. Endpoint aur uske test cases database se selectinload se fetch karein
@@ -32,7 +41,8 @@ async def execute_tests(
     results = await TestExecutionEngine.run_tests_for_endpoint(
         endpoint=endpoint,
         test_cases=endpoint.test_cases,
-        target_base_url=target_base_url,
+        target_base_url=request.target_base_url,
+        auth_config=request.auth_config,
         db=db
     )
     
@@ -53,7 +63,7 @@ async def execute_tests(
 @router.post("/run-all/{spec_id}")
 async def execute_all_tests_for_spec(
     spec_id: int, 
-    target_base_url: str = Query(..., description="Target Server Base URL (e.g. https://httpbin.org)"),
+    request: ExecutionRequest,
     db: AsyncSession = Depends(get_db)
 ):
     # 1. Spec check karein
@@ -80,7 +90,8 @@ async def execute_all_tests_for_spec(
             results = await TestExecutionEngine.run_tests_for_endpoint(
                 endpoint=ep,
                 test_cases=ep.test_cases,
-                target_base_url=target_base_url,
+                target_base_url=request.target_base_url,
+                auth_config=request.auth_config,
                 db=db
             )
             

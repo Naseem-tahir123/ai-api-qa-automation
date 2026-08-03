@@ -5,7 +5,9 @@ from typing import List, Dict, Any, Optional
 class AIGeneratedTestCase(BaseModel):
     category: str = Field(description = "Category of the test: 'Positive', 'Negative', or 'Boundary'")
     description: str = Field(description = "Clear Explanation of What this test case verifies")
-    payload: Dict[str, Any] = Field(description = "The exact JSON body sent to the API")
+    payload: Optional[Dict[str, Any]] = Field(description = "The exact JSON body sent to the API")
+    path_params: Optional[Dict[str, Any]] = Field(default=None, description = "Values for URL  path parameters (e.g., {uuid})")
+    query_params: Optional[Dict[str, Any]] = Field(default = None, description = "Values for URL query parameters")
     expected_status: int = Field(description = "The expected status code e.g., 200,201, 400")
 
 
@@ -19,6 +21,8 @@ class TestCaseResponse(BaseModel):
     category: str
     description: str
     payload: Optional[Dict[str, Any]] 
+    path_params: Optional[Dict[str, Any]]
+    query_params: Optional[Dict[str, Any]]
     expected_status: int
 
 

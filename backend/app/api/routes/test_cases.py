@@ -25,7 +25,8 @@ async def generate_tests_for_endpoint(endpoint_id: int, db: AsyncSession = Depen
             method=endpoint.method,
             path=endpoint.path,
             request_schema=endpoint.request_schema,
-            response_schema=endpoint.response_schema
+            response_schema=endpoint.response_schema,
+            parameters= endpoint.parameters
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Generation Failed: {str(e)}")
@@ -38,6 +39,8 @@ async def generate_tests_for_endpoint(endpoint_id: int, db: AsyncSession = Depen
             category=tc.category,
             description=tc.description,
             payload=tc.payload,
+            path_params = tc.path_params,
+            query_params = tc.query_params,
             expected_status=tc.expected_status
         )
         db.add(new_tc)
