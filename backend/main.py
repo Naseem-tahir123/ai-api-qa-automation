@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from app.api.routes import projects, specifications, test_cases, test_execution, reports
+from app.core.exceptions import register_exception_handlers
 
 app = FastAPI(title="AI API QA Automation Platform", version="1.0")
+register_exception_handlers(app)
 
 # Basic Health Check
 @app.get("/health", tags=["Health"])
