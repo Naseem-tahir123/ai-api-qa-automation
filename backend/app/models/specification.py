@@ -11,9 +11,9 @@ class APISpecification(Base):
     
     version = Column(String, nullable=False, default="v1")
     filename = Column(String, nullable=False)
-    file_path = Column(String, nullable=False) # File jahan local disk par save hogi
+    file_path = Column(String, nullable=False)  # Local path of the uploaded file.
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationship setup (Ek spec kis project se belong karti hai)
+    # Each API specification belongs to one project.
     project = relationship("Project", back_populates="specifications")
     endpoints = relationship("Endpoint", back_populates="specification", cascade="all, delete-orphan")

@@ -3,12 +3,12 @@ from pydantic import create_model, BaseModel
 
 def generate_dynamic_model(model_name: str, fields_schema: Dict[str, Any]) -> Type[BaseModel]:
     """
-    OpenAPI fields dictionary ko dynamically Pydantic Model mein badalta hai.
+    Create a Pydantic model dynamically from an OpenAPI fields dictionary.
     Example input: {"username": "str", "age": "int", "email": "str"}
     """
     pydantic_fields = {}
     
-    # Har field ke type ko Python datatype mein map karna
+    # Map each schema field to a Python type.
     type_mapping = {
         "str": str,
         "int": int,
@@ -17,12 +17,12 @@ def generate_dynamic_model(model_name: str, fields_schema: Dict[str, Any]) -> Ty
     }
     
     for field_name, field_type_str in fields_schema.items():
-        # Type check karna, default 'str' agar kuch samajh na aaye
+        # Use `str` as the fallback for unrecognized types.
         python_type = type_mapping.get(field_type_str, str)
         
         # Pydantic v2 syntax: (Type, DefaultValue)
-        # Hum default value None rakh rahe hain taake tests asani se empty fields bhej sakein
+        # Default fields to None so tests can send empty values when needed.
         pydantic_fields[field_name] = (python_type, None)
         
-    # Dynamically model banana
+    # Create the Pydantic model dynamically.
     return create_model(model_name, **pydantic_fields)

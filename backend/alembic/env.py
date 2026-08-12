@@ -2,7 +2,7 @@ import asyncio
 from logging.config import fileConfig
 from app.core.config import settings
 from app.models.base import Base
-import app.models  # Taake sab models load ho jayein
+import app.models  # Load all models so Alembic can discover their metadata.
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection

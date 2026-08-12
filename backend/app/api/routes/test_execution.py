@@ -26,7 +26,7 @@ async def execute_tests(
     request: ExecutionRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Endpoint aur uske test cases database se selectinload se fetch karein
+    # Fetch the endpoint and its test cases in a single eager-loading query.
     stmt = select(Endpoint).options(selectinload(Endpoint.test_cases)).filter(Endpoint.id == endpoint_id)
     result = await db.execute(stmt)
     endpoint = result.scalar_one_or_none()
@@ -37,7 +37,7 @@ async def execute_tests(
     if not endpoint.test_cases:
         raise HTTPException(status_code=400, detail="No test cases found. Please generate test cases first.")
 
-    # 2. Execution Engine chalayein
+    # Execute the endpoint's saved test cases.
     results = await TestExecutionEngine.run_tests_for_endpoint(
         endpoint=endpoint,
         test_cases=endpoint.test_cases,
@@ -46,7 +46,7 @@ async def execute_tests(
         db=db
     )
     
-    # 3. Pass aur Fail ki ginti karein
+    # Calculate pass and fail totals.
     passed_count = sum(1 for r in results if r.is_passed)
     failed_count = len(results) - passed_count
     
@@ -66,13 +66,13 @@ async def execute_all_tests_for_spec(
     request: ExecutionRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Spec check karein
+    # Verify that the specification exists.
     spec_result = await db.execute(select(APISpecification).filter(APISpecification.id == spec_id))
     spec = spec_result.scalar_one_or_none()
     if not spec:
         raise HTTPException(status_code=404, detail="Specification not found")
 
-    # 2. Spec ke tamam Endpoints aur unke test cases fetch karein
+    # Fetch all specification endpoints and their test cases.
     stmt = select(Endpoint).options(selectinload(Endpoint.test_cases)).filter(Endpoint.specification_id == spec_id)
     endpoints_result = await db.execute(stmt)
     endpoints = endpoints_result.scalars().all()
@@ -84,9 +84,9 @@ async def execute_all_tests_for_spec(
     total_passed = 0
     total_failed = 0
     
-    # 3. Har endpoint par loop lagayen aur TestEngine chalayen
+    # Execute saved test cases for each endpoint.
     for ep in endpoints:
-        if ep.test_cases:  # Agar is endpoint ke tests generate hue hain toh run karein
+        if ep.test_cases:  # Execute only endpoints with generated test cases.
             results = await TestExecutionEngine.run_tests_for_endpoint(
                 endpoint=ep,
                 test_cases=ep.test_cases,

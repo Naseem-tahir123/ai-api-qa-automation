@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
-# Jab file DB mein save ho jaye toh user ko yeh info wapis milegi
+# Response returned after an API specification is stored.
 class APISpecificationResponse(BaseModel):
     id: int
     project_id: int
