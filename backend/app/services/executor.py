@@ -5,9 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.endpoint import Endpoint
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
+from langsmith import traceable
 
 
 class TestExecutionEngine:
+    @traceable(name="run_tests_for_endpoint")
     @staticmethod
     async def run_tests_for_endpoint(
         endpoint: Endpoint,

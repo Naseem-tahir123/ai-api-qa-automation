@@ -2,6 +2,7 @@ import json
 import yaml
 import jsonref
 from typing import List, Dict
+from langsmith import traceable
 
 
 class OpenAPIParser:
@@ -17,7 +18,7 @@ class OpenAPIParser:
             return [OpenAPIParser._strip_proxies(item) for item in obj]
         else:
             return obj
-
+    @traceable(name="parse_openai_spec")
     @staticmethod
     def parse_spec(file_path: str) -> List[Dict]:
         """

@@ -105,14 +105,23 @@ class AITestGenerator:
         chain = prompt | self.structured_llm
 
         # FIX 3: Pass the dynamically generated JSON strings to the prompt
-        result = chain.invoke({
+        result = chain.invoke(
+        {
             "method": method,
             "path": path,
             "parameters": parameters,
             "req_schema_str": req_json_str,
             "res_schema_str": res_json_str
-        })
-
+        },
+        config={
+            "run_name": f"Generate Test Cases for {method} {path}",
+            "tags": ["test_case_generation", method],
+            "metadata":{
+                "endpoint_method": method,
+                "endpoint_path": path
+            },
+        },
+        )
         return result.test_cases
 
 
