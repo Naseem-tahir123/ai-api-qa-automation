@@ -33,12 +33,15 @@ async def generate_tests_for_endpoint(
         ai_test_cases = ai_gen.generate_test_cases(
             method=endpoint.method,
             path=endpoint.path,
-            request_schema=endpoint.request_schema,
-            response_schema=endpoint.response_schema,
-            parameters=endpoint.parameters
+            request_schema=endpoint.request_schema or {},
+            response_schema=endpoint.response_schema or {},
+            parameters=endpoint.parameters or []
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Generation Failed: {str(e)}")
+
+    # Audit report fix: Remove existing test cases first to avoid duplication
+    await db.execute(delete(TestCase).where(TestCase.endpoint_id == endpoint_id))
 
     # 3. Save the AI-generated test cases to the database
     saved_test_cases = []
