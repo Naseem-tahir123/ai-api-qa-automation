@@ -41,8 +41,11 @@ async def parse_specification(spec_id: int, db: AsyncSession = Depends(get_db)):
             method=ep_data["method"],
             summary=ep_data["summary"],
             request_schema=ep_data["request_schema"],
-            response_schema=ep_data["response_schema"]
-        )
+            response_schema=ep_data["response_schema"],
+            parameters = ep_data.get("parameters"),
+            security = ep_data.get("security")
+
+        ) 
         db.add(new_ep)
         new_db_endpoints.append(new_ep)
 

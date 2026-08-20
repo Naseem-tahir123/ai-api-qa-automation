@@ -57,7 +57,7 @@ async def generate_qa_report(spec_id: int, db: AsyncSession = Depends(get_db)):
         for tc in ep.test_cases:
             if tc.results:
                 has_run = True
-                latest_result = tc.results[-1] # Aakhri baar ka result
+                latest_result = tc.results[-1]  # Most recent execution result.
                 
                 ep_total_tests += 1
                 total_time_ms += (latest_result.execution_time_ms or 0)
