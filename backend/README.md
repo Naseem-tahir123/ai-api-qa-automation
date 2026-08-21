@@ -189,52 +189,101 @@ OPENAI_API_KEY=sk-your-key-here
 uv sync
 ```
 
-4. Run database migrations:
+4. Add JWT settings to the `.env` file.
 
-```bash
-uv run alembic upgrade head
+   ```env
+   SECRET_KEY=your_secret_key_here
+   ALGORITHM=HS256
+   ```
+
+5. Apply database migrations.
+
+   ```powershell
+   uv run alembic upgrade head
+   ```
+
+6. Start the API server.
+
+   ```powershell
+   uv run python main.py
+   ```
+
+The service starts at `http://localhost:8000`. Interactive Swagger documentation is available at `http://localhost:8000/docs`.
+
+### Authentication endpoints
+
+#### Signup
+
+```http
+POST /api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "username": "demo_user",
+  "password": "strong_password"
+}
 ```
 
-5. Start the API:
+#### Login
 
-```bash
-uv run uvicorn main:app --reload
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "strong_password"
+}
 ```
 
-6. Health check:
+The login response returns a JWT access token that can be used in the `Authorization: Bearer ...` header for protected routes later.
 
-```bash
+## API workflow
+
+### 1. Check service health
+
+```http
 GET /health
 ```
 
-## Recommended Next Development Phases
+### 2. Create a project
 
-1. Add dependency detection for endpoints.
-2. Build a dependency graph for each uploaded specification.
-3. Add `ExecutionPlan` and `PlanStep` models.
-4. Add `ExecutionContext` for runtime variable storage.
-5. Add response capture and request injection rules.
-6. Update test generation to produce placeholders for dependent values.
-7. Build stateful workflow execution.
-8. Add topological/level-based execution with safe parallelism.
-9. Add test data cleanup and teardown steps.
-10. Move long-running generation/execution to background jobs.
-11. Add end-to-end workflow tests and regression baselines.
+```http
+POST /api/v1/projects/
+Content-Type: application/json
 
-## OpenAI API Key Requirement
+{
+  "name": "HR Connect API",
+  "description": "QA automation for the HR backend"
+}
+```
 
-LLM-based test generation requires an OpenAI API key through the `OPENAI_API_KEY` environment variable.
+### 3. Upload an OpenAPI specification
 
-During development, a developer's personal OpenAI API key may be used temporarily. For long-term development, QA, staging, or production usage, this project should use a dedicated project-level or organization-managed OpenAI API key.
+Upload a `.json`, `.yaml`, or `.yml` file for an existing project.
 
-Dedicated credentials make it easier to manage:
+```powershell
+curl.exe -X POST "http://localhost:8000/api/v1/projects/1/specifications?version=v1" `
+  -F "file=@./openapi.json"
+```
 
-- cost tracking
-- access management
-- key rotation
-- security
-- team-level usage
-- development and production separation
+Uploaded specifications are written to `uploads/specs/` and their metadata is stored in the database.
+
+### 4. Parse the specification
+
+```http
+POST /api/v1/specifications/{spec_id}/parse
+```
+
+The parser supports `GET`, `POST`, `PUT`, `DELETE`, and `PATCH` operations. It stores the endpoint path, method, summary, request-body schema, and response schema.
+
+1.  **Project Creation:** Create a new QA project context.
+2.  **Spec Upload:** Upload your OpenAPI JSON/YAML file.
+3.  **Parsing:** Invoke the parser to extract and store all endpoints, security schemes, and parameters.
+4.  **Test Generation:** Generate AI-driven test suites (either per-endpoint or bulk).
+5.  **Execution:** Run tests against your target API using the execution engine with injected credentials.
+6.  **Reporting:** View the comprehensive QA report via the dashboard endpoint.
 
 ## Security Notes
 
