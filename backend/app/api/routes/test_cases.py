@@ -11,8 +11,10 @@ from app.models.specification import APISpecification
 from app.models.test_case import TestCase
 from app.schemas.test_case import TestCaseResponse
 from app.services.ai_generator import AITestGenerator, get_ai_generator
+from app.api.deps import get_current_user
+from app.models.user import User
 
-router = APIRouter(prefix="/api/v1/test-cases", tags=["Test Cases"])
+router = APIRouter(prefix="/api/v1/test-cases", tags=["Test Cases"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/generate/{endpoint_id}", response_model=List[TestCaseResponse])

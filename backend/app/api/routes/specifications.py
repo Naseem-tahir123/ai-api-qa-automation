@@ -9,8 +9,10 @@ from app.models.specification import APISpecification
 from app.models.endpoint import Endpoint
 from app.schemas.specification import EndpointResponse
 from app.services.parser import OpenAPIParser
+from app.api.deps import get_current_user
+from app.models.user import User
 
-router = APIRouter(prefix="/api/v1/specifications", tags=["Specifications"])
+router = APIRouter(prefix="/api/v1/specifications", tags=["Specifications"], dependencies = [Depends(get_current_user)])
 
 
 @router.post("/{spec_id}/parse", response_model=List[EndpointResponse])

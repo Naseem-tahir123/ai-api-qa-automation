@@ -9,8 +9,10 @@ from app.models.endpoint import Endpoint
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
 from app.schemas.report import ProjectQA_Report, EndpointSummary, FailureDetail
+from app.api.deps import get_current_user
+from app.models.user import User
 
-router = APIRouter(prefix="/api/v1/reports", tags=["Reports Dashboard"])
+router = APIRouter(prefix="/api/v1/reports", tags=["Reports Dashboard"], dependencies=[Depends(get_current_user)])
 
 @router.get("/specifications/{spec_id}", response_model=ProjectQA_Report)
 async def generate_qa_report(spec_id: int, db: AsyncSession = Depends(get_db)):

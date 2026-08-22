@@ -10,8 +10,10 @@ from app.models.endpoint import Endpoint
 from app.schemas.test_result import ExecutionSummary
 from app.services.executor import TestExecutionEngine
 from app.models.specification import APISpecification
+from app.api.deps import get_current_user
+from app.models.user import User
 
-router = APIRouter(prefix="/api/v1/execution", tags=["Test Execution"])
+router = APIRouter(prefix="/api/v1/execution", tags=["Test Execution"], dependencies=[Depends(get_current_user)])
 
 class ExecutionRequest(BaseModel):
     target_base_url: str

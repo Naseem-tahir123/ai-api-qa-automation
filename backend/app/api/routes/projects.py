@@ -11,8 +11,10 @@ from app.models.project import Project
 from app.models.specification import APISpecification
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.specification import APISpecificationResponse
+from app.api.deps import get_current_user
+from app.models.user import User
 
-router = APIRouter(prefix="/api/v1/projects", tags=["Projects"])
+router = APIRouter(prefix="/api/v1/projects", tags=["Projects"], dependencies=[Depends(get_current_user)])
 
 # Directory where uploaded API specification files will be stored.
 # Create the directory automatically if it does not already exist.
