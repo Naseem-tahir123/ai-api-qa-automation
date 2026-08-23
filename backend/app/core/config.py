@@ -11,6 +11,7 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
     RESET_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", "30"))
+    ALLOW_INTERNAL_TARGETS: bool = os.getenv("ALLOW_INTERNAL_TARGETS", "false").lower() in {"1", "true", "yes", "on"}
 
     DEBUG: bool = os.getenv("DEBUG", "false").lower() in {"1", "true", "yes", "on"}
     LANGSMITH_TRACING: bool = os.getenv("LANGSMITH_TRACING", "false").lower() in {"1", "true", "yes", "on"}

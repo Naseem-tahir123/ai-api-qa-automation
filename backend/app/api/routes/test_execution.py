@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -12,6 +12,7 @@ from app.services.executor import TestExecutionEngine
 from app.models.specification import APISpecification
 from app.api.deps import get_current_user
 from app.models.user import User
+from app.core.security import validate_target_url
 
 router = APIRouter(prefix="/api/v1/execution", tags=["Test Execution"], dependencies=[Depends(get_current_user)])
 
@@ -21,6 +22,13 @@ class ExecutionRequest(BaseModel):
         "token": "YourBearerTokenHere",
         "api_key": "YourAPIKeyHere"
     }  # e.g., {"token": "eyJhbG..."}
+    @field_validator("target_base_url")
+    @classmethod
+    def prevent_ssrf(cls, v: str) -> str:
+        try:
+            return validate_target_url(v)
+        except ValueError as e:
+            raise ValueError(f"Security blocked this URL: {str(e)}") 
 
 @router.post("/run/{endpoint_id}", response_model=ExecutionSummary)
 async def execute_tests(

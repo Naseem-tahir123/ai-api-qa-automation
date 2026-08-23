@@ -1,3 +1,5 @@
+# backend/app/services/executor.py
+
 import time
 import httpx
 from typing import List
@@ -8,6 +10,38 @@ from app.models.test_result import TestResult
 from langsmith import traceable
 
 
+ 
+def get_category_priority(category: str) -> int:
+    """
+    Dynamically decides the priority of a test case based on keyword matching.
+    Ensures Happy Paths run first, and Error/Edge cases run last.
+    """
+    cat_lower = category.lower() if category else ""
+    
+    # 1. Happy Path & Success states (Must run FIRST)
+    # Covers: "Positive / Happy Path", "Positive", "Successful registration..."
+    if any(word in cat_lower for word in ["positive", "happy", "success", "retrieve", "get"]):
+        return 0
+        
+    # 2. Negative, Error, Duplicate, and Edge/Boundary cases (Must run LAST)
+    # Covers: "Error Handling", "Negative Testing", "Edge Cases", "Invalid Data Types"
+    if any(word in cat_lower for word in ["negative", "error", "edge", "boundary", "duplicate", "invalid"]):
+        return 3
+        
+    # 3. Auth, Security and Access controls
+    # Covers: "Authentication & Authorization", "Security Validation"
+    if any(word in cat_lower for word in ["security", "auth", "permission"]):
+        return 2
+        
+    # 4. Standard schema/field validations
+    # Covers: "Required Field Validation", "Optional Field Validation", "Business Logic Validation"
+    if any(word in cat_lower for word in ["validation", "type", "field", "required", "optional"]):
+        return 1
+        
+    return 4  # Default fallback for any unknown categories
+# =========================================================================
+
+
 class TestExecutionEngine:
     @traceable(name="run_tests_for_endpoint")
     @staticmethod
@@ -15,18 +49,24 @@ class TestExecutionEngine:
         endpoint: Endpoint,
         test_cases: List[TestCase],
         target_base_url: str,
-        auth_config: dict,  # <-- NEW: Receive authentication credentials from the user
+        auth_config: dict,  
         db: AsyncSession
     ) -> List[TestResult]:
 
         base_url = target_base_url.rstrip("/")
         results = []
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            for tc in test_cases:
+        # Sort the test cases dynamically using our smart substring matching helper
+        sorted_test_cases = sorted(
+            test_cases,
+            key=lambda tc: get_category_priority(tc.category)
+        )
+
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
+            for tc in sorted_test_cases:  # Loop runs on dynamically sorted list
                 start_time = time.time()
 
-                # 1. Replace path parameter placeholders (e.g., /users/{uuid} -> /users/123)
+                # 1. Replace path parameter placeholders
                 formatted_path = endpoint.path
                 if tc.path_params:
                     for key, value in tc.path_params.items():
@@ -37,16 +77,10 @@ class TestExecutionEngine:
                 # 2. Dynamically inject authentication headers
                 headers = {}
                 if endpoint.security:
-                    # Security definitions are typically represented as a list of dictionaries
-                    # Example: [{"HTTPBearer": []}]
                     for sec_req in endpoint.security:
                         sec_keys = str(sec_req).lower()
-
-                        # Add a Bearer token if required by the API and provided by the user
                         if "bearer" in sec_keys and auth_config.get("token"):
                             headers["Authorization"] = f"Bearer {auth_config['token']}"
-
-                        # Add an API key if required by the API and provided by the user
                         elif "apikey" in sec_keys and auth_config.get("api_key"):
                             headers["x-api-key"] = auth_config["api_key"]
 
@@ -66,7 +100,6 @@ class TestExecutionEngine:
                     try:
                         response_data = response.json()
                     except Exception:
-                        # Store the raw response text if the response is not valid JSON
                         response_data = {"raw_text": response.text[:500]}
 
                     is_passed = (actual_status == tc.expected_status)
@@ -94,7 +127,6 @@ class TestExecutionEngine:
 
         await db.commit()
 
-        # Refresh all records to load database-generated values (e.g., IDs, timestamps)
         for r in results:
             await db.refresh(r)
 
