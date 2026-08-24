@@ -45,5 +45,7 @@ describe('standalone frontend data service', () => {
     expect(generation.total_tests_generated).toBe(74)
     expect(execution.total_tests_executed).toBe(74)
     expect(report.pass_rate_percentage).toBeGreaterThan(90)
+    expect(report.test_details.every((test) => test.reason.length > 0)).toBe(true)
+    expect(report.test_details.filter((test) => !test.passed).every((test) => test.error)).toBe(true)
   })
 })

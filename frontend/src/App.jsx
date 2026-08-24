@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Activity, ArrowRight, Beaker, Bot, Check, CheckCircle2, ChevronRight, Circle, Clock3,
+  Activity, ArrowLeft, ArrowRight, Beaker, Bot, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock3,
   Code2, FileJson, FlaskConical, Gauge, LayoutDashboard, LogOut, Menu, Plus,
   Rocket, Search, Settings, ShieldCheck, Sparkles, UploadCloud, X, XCircle, Zap,
 } from 'lucide-react'
@@ -80,6 +80,10 @@ function Metric({ icon: Icon, label, value, note, tone }) {
   return <div className="metric"><div className={`metric-icon ${tone}`}><Icon /></div><div><p>{label}</p><strong>{value}</strong><small>{note}</small></div></div>
 }
 
+function BackButton({ onClick, label = 'Back' }) {
+  return <button className="back-button" onClick={onClick}><ArrowLeft /> {label}</button>
+}
+
 function Overview({ projects, onCreate, onSelect }) {
   const totals = projects.reduce((a,p)=>({tests:a.tests+(p.tests||0),passed:a.passed+(p.passed||0),failed:a.failed+(p.failed||0)}),{tests:0,passed:0,failed:0})
   const passRate = totals.tests ? Math.round(totals.passed/totals.tests*100) : 0
@@ -93,8 +97,8 @@ function Overview({ projects, onCreate, onSelect }) {
   </main>
 }
 
-function Projects({ projects, onCreate, onSelect }) {
-  return <main className="page"><div className="page-heading"><div><p className="overline">YOUR WORK</p><h1>Projects</h1><p>Manage API specifications, tests, and quality reports.</p></div><button className="btn primary" onClick={onCreate}><Plus/> New project</button></div>
+function Projects({ projects, onCreate, onSelect, onBack }) {
+  return <main className="page"><BackButton onClick={onBack} label="Dashboard"/><div className="page-heading"><div><p className="overline">YOUR WORK</p><h1>Projects</h1><p>Manage API specifications, tests, and quality reports.</p></div><button className="btn primary" onClick={onCreate}><Plus/> New project</button></div>
     {projects.length ? <div className="card-grid">{projects.map(p=><button className="project-card" key={p.id} onClick={()=>onSelect(p)}><div className="project-card-top"><span className="project-mark"><Code2/></span><span className="status-pill"><i/> Active</span></div><h3>{p.name}</h3><p>{p.description || 'No description provided.'}</p><div className="card-footer"><span>{date(p.created_at)}</span><span>Open project <ArrowRight/></span></div></button>)}</div> : <section className="panel"><EmptyProjects onCreate={onCreate}/></section>}
   </main>
 }
@@ -105,12 +109,12 @@ function CreateProject({ close, created }) {
   return <div className="modal-backdrop" onMouseDown={e=>e.target===e.currentTarget&&close()}><form className="modal" onSubmit={submit}><div className="modal-head"><div><p className="overline">NEW WORKSPACE</p><h2>Create a project</h2></div><button type="button" className="icon-btn" onClick={close}><X/></button></div><p className="muted">Give this API testing workspace a clear name.</p>{error&&<div className="error-banner"><XCircle/>{error}</div>}<label>Project name<input required autoFocus placeholder="e.g. Payments API" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Description<textarea rows="3" placeholder="What are you testing?" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><div className="modal-actions"><button type="button" className="btn secondary" onClick={close}>Cancel</button><button className="btn primary" disabled={busy}>{busy?<span className="spinner"/>:<><Plus/>Create project</>}</button></div></form></div>
 }
 
-function ProjectWorkspace({ project, notify }) {
+function ProjectWorkspace({ project, notify, onBack }) {
   const [stage,setStage]=useState(0), [spec,setSpec]=useState(null), [endpoints,setEndpoints]=useState([]), [report,setReport]=useState(null), [busy,setBusy]=useState(''), [version,setVersion]=useState('v1')
   const act=async(name,fn,onSuccess)=>{setBusy(name);try{const data=await fn();onSuccess(data);notify(`${name} completed successfully`)}catch(e){notify(e.message,'error')}finally{setBusy('')}}
   const upload=e=>{const file=e.target.files[0];if(file)act('Specification upload',()=>api.uploadSpec(project.id,version,file),d=>{setSpec(d);setStage(1)})}
   const steps=[['Upload spec',FileJson],['Parse endpoints',Code2],['Generate tests',Bot],['Run & report',Rocket]]
-  return <main className="page"><div className="page-heading project-title"><div><button className="back-link" onClick={()=>history.back()}>Projects /</button><h1>{project.name}</h1><p>{project.description || 'API quality automation workspace'}</p></div><span className="status-pill"><i/> Active</span></div>
+  return <main className="page"><BackButton onClick={onBack} label="All projects"/><div className="page-heading project-title"><div><p className="overline">PROJECT WORKSPACE</p><h1>{project.name}</h1><p>{project.description || 'API quality automation workspace'}</p></div><span className="status-pill"><i/> Active</span></div>
     <div className="stepper">{steps.map(([label,Icon],i)=><div className={`step ${i<=stage?'done':''} ${i===stage?'current':''}`} key={label}><span>{i<stage?<Check/>:<Icon/>}</span><div><small>STEP {i+1}</small><strong>{label}</strong></div></div>)}</div>
     <div className="workspace-grid"><section className="panel workflow"><div className="panel-head"><div><p className="overline">SETUP & EXECUTION</p><h2>{steps[stage][0]}</h2></div><span className="step-count">{stage+1} / 4</span></div>
       {stage===0&&<div className="upload-zone"><UploadCloud/><h3>Drop your OpenAPI spec here</h3><p>JSON, YAML, or YML files are supported</p><div className="upload-controls"><input value={version} onChange={e=>setVersion(e.target.value)} aria-label="API version"/><label className="btn primary">Choose file<input type="file" accept=".json,.yaml,.yml" onChange={upload}/></label></div>{busy&&<p className="working"><span className="spinner dark"/> Uploading specification…</p>}</div>}
@@ -123,7 +127,13 @@ function ProjectWorkspace({ project, notify }) {
 
 function Ring({value}) { return <div className="ring" style={{'--value':`${value*3.6}deg`}}><span>{Math.round(value)}<small>%</small></span></div> }
 function Report({ report }) {
-  return <div className="report"><div className="report-title"><div><p className="overline">LATEST REPORT</p><h2>Quality snapshot</h2></div><span className="status-pill"><i/> Complete</span></div><div className="report-summary"><Ring value={report.pass_rate_percentage}/><div><strong>{report.total_passed} passed</strong><span>{report.total_failed} failed</span><small>{report.total_tests_executed} total tests · {report.coverage_percentage}% coverage</small></div></div><div className="endpoint-report">{report.endpoint_details?.map(ep=><div key={ep.endpoint_id}><span className={methodColors[ep.method]}>{ep.method}</span><code>{ep.path}</code><span className="pass"><Check/> {ep.passed}</span><span className="fail"><X/> {ep.failed}</span></div>)}</div></div>
+  return <div className="report"><div className="report-title"><div><p className="overline">LATEST REPORT</p><h2>Quality snapshot</h2></div><span className="status-pill"><i/> Complete</span></div><div className="report-summary"><Ring value={report.pass_rate_percentage}/><div><strong>{report.total_passed} passed</strong><span>{report.total_failed} failed</span><small>{report.total_tests_executed} total tests · {report.coverage_percentage}% coverage</small></div></div><div className="endpoint-report">{report.endpoint_details?.map(ep=><div key={ep.endpoint_id}><span className={methodColors[ep.method]}>{ep.method}</span><code>{ep.path}</code><span className="pass"><Check/> {ep.passed}</span><span className="fail"><X/> {ep.failed}</span></div>)}</div><div className="test-evidence"><div className="evidence-heading"><h3>Test evidence</h3><p>Open any result to understand exactly why it passed or failed.</p></div>{report.test_details?.map(test=><details className={test.passed?'test-result passed':'test-result failed'} key={test.id}><summary><span className="result-symbol">{test.passed?<CheckCircle2/>:<XCircle/>}</span><span className={methodColors[test.method]}>{test.method}</span><span className="result-name"><strong>{test.name}</strong><small>{test.path} · {test.category}</small></span><span className="result-code">{test.actual}</span><ChevronDown/></summary><div className="result-explanation"><div><span>Expected</span><strong>HTTP {test.expected}</strong></div><div><span>Actual</span><strong>HTTP {test.actual}</strong></div><p><strong>{test.passed?'Why it passed':'Why it failed'}</strong>{test.reason}</p>{test.error&&<p className="diagnostic"><strong>Diagnostic</strong>{test.error}</p>}</div></details>)}</div></div>
+}
+
+function ReportsPage({ onBack }) {
+  const [report,setReport]=useState(null)
+  useEffect(()=>{api.report(101).then(setReport)},[])
+  return <main className="page"><BackButton onClick={onBack} label="Dashboard"/><div className="page-heading"><div><p className="overline">QUALITY INTELLIGENCE</p><h1>Reports</h1><p>Review pass/fail evidence and actionable diagnostics.</p></div></div><section className="panel report-page">{report?<Report report={report}/>:<p className="report-loading"><span className="spinner dark"/> Loading demo report…</p>}</section></main>
 }
 
 export default function App() {
@@ -131,7 +141,7 @@ export default function App() {
   const notify=(message,type='success')=>{setToast({message,type});setTimeout(()=>setToast(null),4000)}
   const load=()=>api.projects().then(setProjects).catch(e=>notify(e.message,'error'))
   useEffect(()=>{if(authed)load()},[authed])
-  const content=useMemo(()=>selected?<ProjectWorkspace project={selected} notify={notify}/>:page==='projects'?<Projects projects={projects} onCreate={()=>setModal(true)} onSelect={setSelected}/>:page==='reports'?<main className="page"><div className="page-heading"><div><p className="overline">QUALITY INTELLIGENCE</p><h1>Reports</h1><p>Open a project and complete a run to view its latest report.</p></div></div><section className="panel"><EmptyProjects onCreate={()=>setPage('projects')}/></section></main>:<Overview projects={projects} onCreate={()=>setModal(true)} onSelect={setSelected}/>,[page,projects,selected])
+  const content=useMemo(()=>selected?<ProjectWorkspace project={selected} notify={notify} onBack={()=>{setSelected(null);setPage('projects')}}/>:page==='projects'?<Projects projects={projects} onCreate={()=>setModal(true)} onSelect={setSelected} onBack={()=>setPage('overview')}/>:page==='reports'?<ReportsPage onBack={()=>setPage('overview')}/>:<Overview projects={projects} onCreate={()=>setModal(true)} onSelect={setSelected}/>,[page,projects,selected])
   if(!authed)return <Auth onDone={()=>setAuthed(true)}/>
   return <><Shell page={selected?'projects':page} setPage={p=>{setSelected(null);setPage(p)}} logout={()=>{clearSession();setAuthed(false)}}>{content}</Shell>{modal&&<CreateProject close={()=>setModal(false)} created={p=>{setProjects([p,...projects]);setModal(false);setSelected(p);notify('Project created')}}/>}<Toast toast={toast} close={()=>setToast(null)}/></>
 }
