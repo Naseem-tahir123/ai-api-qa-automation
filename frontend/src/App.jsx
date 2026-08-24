@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Activity, ArrowRight, Beaker, Bot, Check, CheckCircle2, ChevronRight, Circle,
+  Activity, ArrowRight, Beaker, Bot, Check, CheckCircle2, ChevronRight, Circle, Clock3,
   Code2, FileJson, FlaskConical, Gauge, LayoutDashboard, LogOut, Menu, Plus,
   Rocket, Search, Settings, ShieldCheck, Sparkles, UploadCloud, X, XCircle, Zap,
 } from 'lucide-react'
@@ -44,6 +44,7 @@ function Auth({ onDone }) {
         <p className="overline">{signup ? 'GET STARTED' : 'WELCOME BACK'}</p>
         <h2>{signup ? 'Create your workspace' : 'Sign in to QA Pilot'}</h2>
         <p className="muted">{signup ? 'Start testing smarter today.' : 'Continue building reliable APIs.'}</p>
+        {!signup && <div className="demo-login"><strong>Demo access</strong><span>demo@qapilot.dev</span><span>demo1234</span></div>}
         {error && <div className="error-banner"><XCircle />{error}</div>}
         <label>Email address<input type="email" required placeholder="you@company.com" value={form.email} onChange={e => setForm({...form, email:e.target.value})}/></label>
         {signup && <label>Username<input required placeholder="Your name" value={form.username} onChange={e => setForm({...form, username:e.target.value})}/></label>}
@@ -62,7 +63,7 @@ function Shell({ page, setPage, children, logout }) {
     <aside className={open ? 'open' : ''}>
       <div className="brand"><span><Beaker /></span> QA Pilot</div>
       <nav>{nav.map(([id,label,Icon]) => <button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setOpen(false)}}><Icon />{label}</button>)}</nav>
-      <div className="aside-bottom"><div className="mini-status"><span/><div><strong>API connected</strong><small>localhost:8000</small></div></div><button onClick={logout}><LogOut /> Sign out</button></div>
+      <div className="aside-bottom"><div className="mini-status"><span/><div><strong>Preview mode</strong><small>Local demo data</small></div></div><button onClick={logout}><LogOut /> Sign out</button></div>
     </aside>
     <div className="main-wrap">
       <header><button className="menu" onClick={()=>setOpen(!open)}><Menu /></button><div className="crumb">Workspace <ChevronRight /> <strong>{page[0].toUpperCase()+page.slice(1)}</strong></div><div className="header-actions"><button className="icon-btn"><Search /></button><div className="avatar">QA</div></div></header>
@@ -80,10 +81,15 @@ function Metric({ icon: Icon, label, value, note, tone }) {
 }
 
 function Overview({ projects, onCreate, onSelect }) {
+  const totals = projects.reduce((a,p)=>({tests:a.tests+(p.tests||0),passed:a.passed+(p.passed||0),failed:a.failed+(p.failed||0)}),{tests:0,passed:0,failed:0})
+  const passRate = totals.tests ? Math.round(totals.passed/totals.tests*100) : 0
+  const workflow = [{label:'Projects configured',value:projects.length,max:5},{label:'Specs analyzed',value:projects.filter(p=>p.progress>=50).length,max:projects.length||1},{label:'Test suites ready',value:projects.filter(p=>p.progress>=75).length,max:projects.length||1},{label:'Runs completed',value:projects.filter(p=>p.progress===100).length,max:projects.length||1}]
   return <main className="page"><div className="page-heading"><div><p className="overline">COMMAND CENTER</p><h1>Good morning, QA team.</h1><p>Here’s what’s happening across your API quality workspace.</p></div><button className="btn primary" onClick={onCreate}><Plus /> New project</button></div>
-    <div className="metrics-grid"><Metric icon={Code2} label="Active projects" value={projects.length} note="in this workspace" tone="mint"/><Metric icon={FlaskConical} label="Tests generated" value="—" note="run a project to begin" tone="violet"/><Metric icon={Gauge} label="Pass rate" value="—" note="awaiting test results" tone="amber"/></div>
+    <div className="demo-banner"><span><Sparkles/></span><div><strong>Frontend preview mode</strong><small>Explore every workflow with local demo data. No backend connection is being used.</small></div><span className="status-pill"><i/> Demo ready</span></div>
+    <div className="metrics-grid"><Metric icon={Code2} label="Active projects" value={projects.length} note="in this workspace" tone="mint"/><Metric icon={FlaskConical} label="Tests generated" value={totals.tests} note={`${totals.failed} need attention`} tone="violet"/><Metric icon={Gauge} label="Pass rate" value={`${passRate}%`} note={`${totals.passed} checks passing`} tone="amber"/></div>
+    <div className="dashboard-grid"><section className="panel"><div className="panel-head"><div><h2>Automation progress</h2><p>Workspace readiness across the QA lifecycle</p></div><span className="live-label"><i/> Live demo</span></div><div className="progress-body">{workflow.map(item=><div className="progress-item" key={item.label}><div><span>{item.label}</span><strong>{item.value}/{item.max}</strong></div><div className="progress-track"><i style={{width:`${Math.min(100,item.value/item.max*100)}%`}}/></div></div>)}</div></section><section className="panel"><div className="panel-head"><div><h2>Recent activity</h2><p>Latest workspace events</p></div></div><div className="activity-list"><div><span className="activity-icon success"><CheckCircle2/></span><p><strong>Payments API run completed</strong><small>139 tests passed · 12 min ago</small></p></div><div><span className="activity-icon ai"><Bot/></span><p><strong>Identity test suite generated</strong><small>86 cases · 1 hour ago</small></p></div><div><span className="activity-icon neutral"><Clock3/></span><p><strong>Orders spec analyzed</strong><small>18 endpoints · Yesterday</small></p></div></div></section></div>
     <section className="panel"><div className="panel-head"><div><h2>Recent projects</h2><p>Your API testing workspaces</p></div><button className="text-btn" onClick={()=>onCreate()}>Create project <ArrowRight /></button></div>
-      {projects.length ? <div className="project-list">{projects.slice(0,5).map(p=><button key={p.id} className="project-row" onClick={()=>onSelect(p)}><span className="project-mark"><Code2/></span><span className="project-copy"><strong>{p.name}</strong><small>{p.description || 'API quality automation project'}</small></span><span className="project-date">Created {date(p.created_at)}</span><ChevronRight/></button>)}</div> : <EmptyProjects onCreate={onCreate}/>}</section>
+      {projects.length ? <div className="project-list">{projects.slice(0,5).map(p=><button key={p.id} className="project-row" onClick={()=>onSelect(p)}><span className="project-mark"><Code2/></span><span className="project-copy"><strong>{p.name}</strong><small>{p.description || 'API quality automation project'}</small></span><span className="row-progress"><i style={{width:`${p.progress||0}%`}}/><small>{p.progress||0}% complete</small></span><span className="project-date">{p.status||date(p.created_at)}</span><ChevronRight/></button>)}</div> : <EmptyProjects onCreate={onCreate}/>}</section>
   </main>
 }
 
@@ -100,7 +106,7 @@ function CreateProject({ close, created }) {
 }
 
 function ProjectWorkspace({ project, notify }) {
-  const [stage,setStage]=useState(0), [spec,setSpec]=useState(null), [endpoints,setEndpoints]=useState([]), [report,setReport]=useState(null), [busy,setBusy]=useState(''), [version,setVersion]=useState('v1'), [target,setTarget]=useState('http://localhost:3000')
+  const [stage,setStage]=useState(0), [spec,setSpec]=useState(null), [endpoints,setEndpoints]=useState([]), [report,setReport]=useState(null), [busy,setBusy]=useState(''), [version,setVersion]=useState('v1')
   const act=async(name,fn,onSuccess)=>{setBusy(name);try{const data=await fn();onSuccess(data);notify(`${name} completed successfully`)}catch(e){notify(e.message,'error')}finally{setBusy('')}}
   const upload=e=>{const file=e.target.files[0];if(file)act('Specification upload',()=>api.uploadSpec(project.id,version,file),d=>{setSpec(d);setStage(1)})}
   const steps=[['Upload spec',FileJson],['Parse endpoints',Code2],['Generate tests',Bot],['Run & report',Rocket]]
@@ -110,7 +116,7 @@ function ProjectWorkspace({ project, notify }) {
       {stage===0&&<div className="upload-zone"><UploadCloud/><h3>Drop your OpenAPI spec here</h3><p>JSON, YAML, or YML files are supported</p><div className="upload-controls"><input value={version} onChange={e=>setVersion(e.target.value)} aria-label="API version"/><label className="btn primary">Choose file<input type="file" accept=".json,.yaml,.yml" onChange={upload}/></label></div>{busy&&<p className="working"><span className="spinner dark"/> Uploading specification…</p>}</div>}
       {stage===1&&<div className="action-state"><div className="file-chip"><FileJson/><div><strong>{spec?.filename}</strong><small>Version {spec?.version} · uploaded {date(spec?.uploaded_at)}</small></div><CheckCircle2/></div><div className="action-copy"><Sparkles/><h3>Ready to discover your API</h3><p>We’ll inspect the specification and map every supported route.</p><button className="btn primary" disabled={busy} onClick={()=>act('Endpoint parsing',()=>api.parseSpec(spec.id),d=>{setEndpoints(d);setStage(2)})}>{busy?<span className="spinner"/>:<><Zap/> Parse endpoints</>}</button></div></div>}
       {stage===2&&<><div className="result-banner"><CheckCircle2/><div><strong>{endpoints.length} endpoints discovered</strong><small>Your API surface is mapped and ready for AI test generation.</small></div></div><div className="endpoint-list">{endpoints.slice(0,6).map(ep=><div key={ep.id}><span className={methodColors[ep.method]}>{ep.method}</span><code>{ep.path}</code><small>{ep.summary}</small></div>)}</div><div className="sticky-action"><p><Bot/><span><strong>Generate a complete test suite</strong><small>Positive, negative, boundary, auth, and edge cases.</small></span></p><button className="btn primary" disabled={busy} onClick={()=>act('AI test generation',()=>api.generateAll(spec.id),()=>setStage(3))}>{busy?<span className="spinner"/>:<><Sparkles/> Generate with AI</>}</button></div></>}
-      {stage===3&&<div className="run-state"><div className="ready-orbit"><Rocket/></div><h3>Your test suite is ready to fly</h3><p>Enter the safe target API base URL. QA Pilot will execute all generated tests and assemble the report.</p><label>Target base URL<input value={target} onChange={e=>setTarget(e.target.value)} placeholder="https://staging-api.example.com"/></label><button className="btn primary" disabled={busy} onClick={()=>act('Test execution',()=>api.executeAll(spec.id,{target_base_url:target,auth_config:{}}),async()=>{const r=await api.report(spec.id);setReport(r)})}>{busy?<span className="spinner"/>:<><Rocket/> Run all tests</>}</button>{report&&<Report report={report}/>}</div>}
+      {stage===3&&<div className="run-state"><div className="ready-orbit"><Rocket/></div><h3>Your demo test suite is ready</h3><p>Run the simulation to preview loading states, results, and the quality report without contacting any backend or target API.</p><div className="simulation-note"><ShieldCheck/><span><strong>Safe frontend simulation</strong><small>No network request or real API execution will occur.</small></span></div><button className="btn primary" disabled={busy} onClick={()=>act('Demo test execution',()=>api.executeAll(spec.id),async()=>{const r=await api.report(spec.id);setReport(r)})}>{busy?<span className="spinner"/>:<><Rocket/> Run demo tests</>}</button>{report&&<Report report={report}/>}</div>}
     </section><aside className="help-panel"><p className="overline">WORKFLOW</p><h3>From spec to signal</h3><ul>{steps.map(([label],i)=><li className={i<=stage?'done':''} key={label}><span>{i<stage?<Check/>:<Circle/>}</span><div><strong>{label}</strong><small>{['Import JSON or YAML','Discover API routes','Build cases with AI','Execute and inspect'][i]}</small></div></li>)}</ul><div className="tip"><ShieldCheck/><p><strong>Safe by design</strong><br/>Target URL validation and auth stay in your backend.</p></div></aside></div>
   </main>
 }
@@ -123,7 +129,7 @@ function Report({ report }) {
 export default function App() {
   const [authed,setAuthed]=useState(hasSession()), [page,setPage]=useState('overview'), [projects,setProjects]=useState([]), [selected,setSelected]=useState(null), [modal,setModal]=useState(false), [toast,setToast]=useState(null)
   const notify=(message,type='success')=>{setToast({message,type});setTimeout(()=>setToast(null),4000)}
-  const load=()=>api.projects().then(setProjects).catch(e=>{if(e.status===401){clearSession();setAuthed(false)}else notify(e.message,'error')})
+  const load=()=>api.projects().then(setProjects).catch(e=>notify(e.message,'error'))
   useEffect(()=>{if(authed)load()},[authed])
   const content=useMemo(()=>selected?<ProjectWorkspace project={selected} notify={notify}/>:page==='projects'?<Projects projects={projects} onCreate={()=>setModal(true)} onSelect={setSelected}/>:page==='reports'?<main className="page"><div className="page-heading"><div><p className="overline">QUALITY INTELLIGENCE</p><h1>Reports</h1><p>Open a project and complete a run to view its latest report.</p></div></div><section className="panel"><EmptyProjects onCreate={()=>setPage('projects')}/></section></main>:<Overview projects={projects} onCreate={()=>setModal(true)} onSelect={setSelected}/>,[page,projects,selected])
   if(!authed)return <Auth onDone={()=>setAuthed(true)}/>
