@@ -1,5 +1,9 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from arq import create_pool
+from arq.connections import RedisSettings
+from arq.jobs import Job
 from sqlalchemy.future import select
 from sqlalchemy import delete
 from sqlalchemy.orm import selectinload
@@ -16,6 +20,10 @@ from app.models.user import User
 
 router = APIRouter(prefix="/api/v1/test-cases", tags=["Test Cases"], dependencies=[Depends(get_current_user)])
 
+
+async def get_redis_pool():
+    redis_url = os.getenv("REDIS_URL", "redis://127.0.0.1:6379")
+    return await create_pool(RedisSettings(host="127.0.0.1", port=6379))
 
 @router.post("/generate/{endpoint_id}", response_model=List[TestCaseResponse])
 async def generate_tests_for_endpoint(
@@ -68,77 +76,46 @@ async def generate_tests_for_endpoint(
 
     return saved_test_cases
 
-@router.post("/generate-all/{spec_id}")
+@router.post("/generate-all/{spec_id}", status_code=202)
 async def generate_all_tests_for_spec(
     spec_id: int,
     db: AsyncSession = Depends(get_db),
-    ai_gen: AITestGenerator = Depends(get_ai_generator)
+    redis = Depends(get_redis_pool) 
 ):
-    # 1. Fetch the specification along with all its associated endpoints
-    stmt = (
-        select(APISpecification)
-        .options(selectinload(APISpecification.endpoints))
-        .filter(APISpecification.id == spec_id)
-    )
-    result = await db.execute(stmt)
-    spec = result.scalar_one_or_none()
-
-    if not spec:
+    
+    result = await db.execute(select(APISpecification).filter(APISpecification.id == spec_id) )
+    if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Specification not found")
+    job = await redis.enqueue_job("generate_tests_task", spec_id)
 
-    total_generated = 0
-    endpoints_processed = 0
-    failed_endpoints = 0
-
-    # 2. Iterate through each endpoint and generate test cases using AI
-    for endpoint in spec.endpoints:
-
-        # Audit report fix: Remove existing test cases first to avoid duplication
-        await db.execute(delete(TestCase).filter(TestCase.endpoint_id == endpoint.id))
-        await db.execute(delete(TestCase).where(TestCase.endpoint_id == endpoint.id))
-        await db.commit()
-
-        try:
-            # Send endpoint data to the AI generator
-            ai_test_cases = ai_gen.generate_test_cases(
-                method=endpoint.method,
-                path=endpoint.path,
-                request_schema=endpoint.request_schema or {},
-                response_schema=endpoint.response_schema or {},
-                parameters=endpoint.parameters
-            )
-
-            # Save generated test cases to the database
-            for tc in ai_test_cases:
-                new_tc = TestCase(
-                    endpoint_id=endpoint.id,
-                    category=tc.category,
-                    description=tc.description,
-                    payload=tc.payload,
-                    path_params=tc.path_params,
-                    query_params=tc.query_params,
-                    expected_status=tc.expected_status
-                )
-                db.add(new_tc)
-                total_generated += 1
-
-            endpoints_processed += 1
-
-            # Commit after each endpoint so progress is not lost if a failure occurs later
-            await db.commit()
-
-        except Exception as e:
-            # If AI generation fails for one endpoint, continue processing the remaining endpoints
-            print(f"Failed to generate tests for endpoint {endpoint.path}: {str(e)}")
-            failed_endpoints += 1
-
-            # Roll back the transaction to prevent partial data from being saved
-            await db.rollback()
-
+    if not job:
+        raise HTTPException(status_code=500, detail="Failed to enqueue job for test generation")
     return {
-        "message": f"Bulk test generation completed for Spec ID: {spec_id}",
-        "total_endpoints_processed": endpoints_processed,
-        "endpoints_successfully_processed": endpoints_processed,
-        "endpoints_failed": failed_endpoints,
-        "total_tests_generated": total_generated
+        "message": "Test generation started in background.",
+        "task_id": job.job_id,
+        "spec_id": spec_id,
+        "status": "queued"
     }
+
+ 
+
+@router.get("/tasks/{task_id}")
+async def get_task_status(task_id: str, redis = Depends(get_redis_pool)):
+    job = Job(task_id, redis)
+    
+    try:
+        info = await job.info()
+        status = await job.status()
+        
+        # Agar job completely done hai
+        if status.value == "complete":
+            result = await job.result()
+            return {"task_id": task_id, "status": "completed", "result": result}
+            
+        return {
+            "task_id": task_id, 
+            "status": status.value,  # 'queued', 'in_progress' etc.
+            "enqueue_time": info.enqueue_time if info else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Task not found: {str(e)}")
