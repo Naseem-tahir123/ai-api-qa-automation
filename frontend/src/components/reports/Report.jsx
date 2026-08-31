@@ -1,0 +1,10 @@
+import { Check, CheckCircle2, ChevronDown, X, XCircle } from 'lucide-react'
+import { methodClasses } from '../../utils/formatters'
+
+function PassRateRing({ value }) {
+  return <div className="ring" style={{ '--value': `${value * 3.6}deg` }}><span>{Math.round(value)}<small>%</small></span></div>
+}
+
+export default function Report({ report }) {
+  return <div className="report"><div className="report-title"><div><p className="overline">LATEST REPORT</p><h2>Quality snapshot</h2></div><span className="status-pill"><i/> Complete</span></div><div className="report-summary"><PassRateRing value={report.pass_rate_percentage}/><div><strong>{report.total_passed} passed</strong><span>{report.total_failed} failed</span><small>{report.total_tests_executed} total tests · {report.coverage_percentage}% coverage</small></div></div><div className="endpoint-report">{report.endpoint_details?.map((endpoint) => <div key={endpoint.endpoint_id}><span className={methodClasses[endpoint.method]}>{endpoint.method}</span><code>{endpoint.path}</code><span className="pass"><Check/> {endpoint.passed}</span><span className="fail"><X/> {endpoint.failed}</span></div>)}</div><div className="test-evidence"><div className="evidence-heading"><h3>Test evidence</h3><p>Open any result to understand exactly why it passed or failed.</p></div>{report.test_details?.map((test) => <details className={`test-result ${test.passed ? 'passed' : 'failed'}`} key={test.id}><summary><span className="result-symbol">{test.passed ? <CheckCircle2/> : <XCircle/>}</span><span className={methodClasses[test.method]}>{test.method}</span><span className="result-name"><strong>{test.name}</strong><small>{test.path} · {test.category}</small></span><span className="result-code">{test.actual}</span><ChevronDown/></summary><div className="result-explanation"><div><span>Expected</span><strong>HTTP {test.expected}</strong></div><div><span>Actual</span><strong>HTTP {test.actual}</strong></div><p><strong>{test.passed ? 'Why it passed' : 'Why it failed'}</strong>{test.reason}</p>{test.error && <p className="diagnostic"><strong>Diagnostic</strong>{test.error}</p>}</div></details>)}</div></div>
+}

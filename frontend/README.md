@@ -27,3 +27,14 @@ You can also create a local account from the signup screen. Accounts, projects, 
 4. Parse endpoints.
 5. Generate tests with the configured AI backend.
 6. Execute tests against a target API and inspect the QA report.
+
+## Routes
+
+- `/login` — local/demo authentication
+- `/dashboard` — workspace progress overview
+- `/projects` — project directory and creation
+- `/projects/:projectId` — project QA workflow
+- `/projects/:projectId/report` — project-specific report
+- `/reports` — quality reports overview
+
+Protected routes redirect unauthenticated visitors to `/login`. Browser back/forward navigation and direct project URLs are supported.
