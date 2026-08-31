@@ -7,7 +7,7 @@ class TestResult(Base):
     __tablename__ = "test_results"
 
     id = Column(Integer, primary_key=True, index=True)
-    test_case_id = Column(Integer, ForeignKey("test_cases.id", ondelete="CASCADE"), nullable=False)
+    scenario_step_id = Column(Integer, ForeignKey("scenario_steps.id", ondelete="CASCADE"), nullable=False)
     
     actual_status = Column(Integer, nullable=True)  # HTTP status returned by the target API.
     is_passed = Column(Boolean, nullable=False, default=False)  # Whether the test passed.
@@ -16,4 +16,4 @@ class TestResult(Base):
     error_message = Column(String, nullable=True)  # Connection or execution failure details.
     executed_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    test_case = relationship("TestCase", back_populates="results")
+    step = relationship("ScenarioStep", back_populates="results")

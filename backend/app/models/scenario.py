@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, ForeignKey
+from sqlalchemy import Column, Integer, String, JSON, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 
@@ -32,11 +32,6 @@ class ScenarioStep(Base):
         ForeignKey("test_scenarios.id", ondelete="CASCADE"),
         nullable = False
     )
-    endpoint_id = Column(
-        Integer,
-        ForeignKey("test_scenarios.id", ondelete="CASCADE"),
-        nullable = False
-    )
 
     endpoint_id = Column(
         Integer,
@@ -44,13 +39,19 @@ class ScenarioStep(Base):
         nullable = False
     )
 
+    step_type = Column(String, nullable=False) #'setup', 'test' , or 'teardown'
+    category = Column(String, nullable = True) # 'Positive', 'Negative', 'Boundary' etc.
+    mutates_state = Column(Boolean, default = False) # True for POST/PUT/PATCH test steps 
+
     step_order = Column(
         Integer,
         nullable = False,
     ) # Step 1, Step 2, etc.
     payload = Column(JSON, nullable=True) # Request body
+    path_params = Column(JSON, nullable=True)
+    query_params = Column(JSON, nullable = True)
 
-    # These two columns are essential for stateful testing
+    # LangGraph State Memory Rules (These two columns are essential for stateful testing)
     extract_rules = Column(
         JSON,
         nullable=True,
@@ -63,3 +64,6 @@ class ScenarioStep(Base):
     expected_status = Column(Integer, nullable=False)
     scenario = relationship("TestScenario", back_populates = "steps")
     endpoint = relationship("Endpoint")
+
+    # Link Results directly to Steps
+    results = relationship("TestResult", back_populates = "step", cascade="all, delete-orphan")
