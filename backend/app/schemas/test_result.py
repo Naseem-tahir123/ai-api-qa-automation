@@ -1,10 +1,10 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Any, List
 
 class TestResultResponse(BaseModel):
     id: int
-    test_case_id: int
+    scenario_step_id:int
     actual_status: Optional[int]
     is_passed: bool
     response_body: Optional[Any]
@@ -15,7 +15,7 @@ class TestResultResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class ExecutionSummary(BaseModel):
-    endpoint_id: int
+    pipeline_id: int
     total_executed: int
     passed: int
     failed: int

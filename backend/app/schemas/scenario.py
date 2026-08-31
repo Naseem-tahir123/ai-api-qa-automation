@@ -13,6 +13,10 @@ class InjectRule(BaseModel):
 
 
 class ScenarioStepCreate(BaseModel):
+    step_type: str = Field(description = "Must be 'setup', 'test', or 'teardown'")
+    category: Optional[str] = Field(default ="Other", description="For 'test' steps: 'Positive', 'Negative', 'Boundary', etc.")
+    mutates_state: bool = Field(default= False, description="True if this step modifies data(POST/PUT/PATHCH)")
+
     endpoint_method: str = Field(description="HTTP method used by the endpoint, such as 'POST','GET','PUT',or 'DELETE'")
     endpoint_path: str = Field(
         description = "API endpoint path, such as '/api/users'"
@@ -21,12 +25,15 @@ class ScenarioStepCreate(BaseModel):
         default = None,
         description = "Request body dat sent to the API"
     )
+    path_params: Optional[Dict[str, Any]] = Field(default= None, description="Path parameters")
+    query_params: Optional[Dict[str, Any]] = Field(default= None, description="Query parameters")
+
     extract_rules: Optional[List[ExtractRule]] = Field(
-        default = None,
+        default = [],
         description = "Rules used to extract values from the API response and store them in memory"
     )
     inject_rules: Optional[List[InjectRule]] = Field(
-        default = None,
+        default = [],
         description = "Rules used to take values from memory and insert them into the next request"
     )
     expected_status: int = Field(
@@ -64,23 +71,10 @@ class ScenarioStepCreate(BaseModel):
 
 class TestScenarioCreate(BaseModel):
     name: str = Field(
-        description = "Name of the test scenario, such as 'User Registration and Deletion Flow'"
+        description = "Name of the test scenario"
     )
     description: str
     steps: List[ScenarioStepCreate]
-
-    @model_validator(mode="before")
-    @classmethod
-    def supply_description_for_legacy_ai_output(cls, value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-
-        normalized = dict(value)
-        normalized.setdefault(
-            "description",
-            f"Stateful API workflow: {normalized.get('name', 'AI-generated scenario')}.",
-        )
-        return normalized
 
 
 class AITestScenarioPlan(BaseModel):
