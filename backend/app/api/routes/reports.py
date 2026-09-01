@@ -8,7 +8,7 @@ from app.models.specification import APISpecification
 from app.models.endpoint import Endpoint
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
-from app.schemas.report import ProjectQA_Report, EndpointSummary, FailureDetail
+from app.schemas.report import ProjectQA_Report, EndpointSummary, FailureDetail, TestEvidence
 from app.api.deps import get_current_user
 from app.models.user import User
 
@@ -46,6 +46,7 @@ async def generate_qa_report(spec_id: int, db: AsyncSession = Depends(get_db)):
     
     endpoint_summaries = []
     actionable_failures = []
+    test_evidence = []
 
     # 3. Deep Data Processing Loop
     for ep in spec.endpoints:
@@ -71,9 +72,16 @@ async def generate_qa_report(spec_id: int, db: AsyncSession = Depends(get_db)):
                 if latest_result.is_passed:
                     ep_passed += 1
                     category_metrics[cat]["passed"] += 1
+                    reason = (
+                        f"Received the expected HTTP {tc.expected_status} status."
+                    )
                 else:
                     ep_failed += 1
                     category_metrics[cat]["failed"] += 1
+                    reason = (
+                        latest_result.error_message
+                        or f"Expected HTTP {tc.expected_status} but received HTTP {latest_result.actual_status}."
+                    )
                     
                     # Capture Failure Details (Bug Report)
                     actionable_failures.append(
@@ -88,6 +96,22 @@ async def generate_qa_report(spec_id: int, db: AsyncSession = Depends(get_db)):
                             error_message=latest_result.error_message
                         )
                     )
+
+                test_evidence.append(
+                    TestEvidence(
+                        id=tc.id,
+                        endpoint_path=ep.path,
+                        method=ep.method,
+                        category=tc.category,
+                        description=tc.description,
+                        expected_status=tc.expected_status,
+                        actual_status=latest_result.actual_status,
+                        is_passed=latest_result.is_passed,
+                        execution_time_ms=latest_result.execution_time_ms,
+                        reason=reason,
+                        error_message=latest_result.error_message,
+                    )
+                )
 
         if has_run:
             tested_endpoints += 1
@@ -126,5 +150,6 @@ async def generate_qa_report(spec_id: int, db: AsyncSession = Depends(get_db)):
         total_execution_time_ms=round(total_time_ms, 2),
         category_breakdown=category_metrics,
         endpoint_details=endpoint_summaries,
-        actionable_failures=actionable_failures
+        actionable_failures=actionable_failures,
+        test_evidence=test_evidence,
     )

@@ -9,5 +9,9 @@ const navigation = [
 ]
 
 export default function Sidebar({ open, onNavigate, onLogout }) {
-  return <aside className={open ? 'open' : ''}><Brand /><nav>{navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} onClick={onNavigate} className={({ isActive }) => isActive ? 'active' : ''}><Icon />{label}</NavLink>)}</nav><div className="aside-bottom"><div className="mini-status"><span/><div><strong>Preview mode</strong><small>Local demo data</small></div></div><button onClick={onLogout}><LogOut /> Sign out</button></div></aside>
+  return <aside className={open ? 'open' : ''}>
+    <Brand />
+    <nav>{navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} onClick={onNavigate} className={({ isActive }) => isActive ? 'active' : ''}><Icon />{label}</NavLink>)}</nav>
+    <div className="aside-bottom"><div className="mini-status"><span/><div><strong>API mode</strong><small>FastAPI connected</small></div></div><button onClick={onLogout}><LogOut /> Sign out</button></div>
+  </aside>
 }

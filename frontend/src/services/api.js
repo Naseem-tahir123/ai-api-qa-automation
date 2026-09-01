@@ -1,73 +1,112 @@
-// Browser-local adapter used by the frontend preview. The exported service
-// boundaries can later delegate to HTTP without changing page components.
-const STORAGE_KEYS = { session: 'qa_demo_session', users: 'qa_demo_users', projects: 'qa_demo_projects' }
-const delay = (value, milliseconds = 450) => new Promise((resolve) => setTimeout(() => resolve(value), milliseconds))
-const readStorage = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback } catch { return fallback } }
-const writeStorage = (key, value) => localStorage.setItem(key, JSON.stringify(value))
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+const SESSION_KEY = 'qa_session'
+const PROJECT_SPECS_KEY = 'qa_project_specs'
 
-const seedProjects = [
-  { id: 101, name: 'Payments API', description: 'Checkout, refunds, and payment method coverage', created_at: '2026-08-21T10:00:00Z', progress: 100, tests: 148, passed: 139, failed: 9, coverage: 96, status: 'Healthy' },
-  { id: 102, name: 'Identity Service', description: 'Authentication and account lifecycle APIs', created_at: '2026-08-19T10:00:00Z', progress: 75, tests: 86, passed: 72, failed: 14, coverage: 82, status: 'Review' },
-  { id: 103, name: 'Orders Platform', description: 'Order creation, tracking, and fulfilment', created_at: '2026-08-14T10:00:00Z', progress: 50, tests: 42, passed: 39, failed: 3, coverage: 61, status: 'Building' },
-]
-const demoEndpoints = [
-  { id: 1, method: 'GET', path: '/users', summary: 'List all users' },
-  { id: 2, method: 'POST', path: '/users', summary: 'Create a user' },
-  { id: 3, method: 'GET', path: '/users/{id}', summary: 'Get user details' },
-  { id: 4, method: 'PATCH', path: '/users/{id}', summary: 'Update a user' },
-  { id: 5, method: 'DELETE', path: '/users/{id}', summary: 'Delete a user' },
-  { id: 6, method: 'POST', path: '/auth/token', summary: 'Create access token' },
-]
+function readJson(key, fallback = null) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback } catch { return fallback }
+}
 
-function getProjects() {
-  const stored = readStorage(STORAGE_KEYS.projects, null)
-  if (stored) return stored
-  writeStorage(STORAGE_KEYS.projects, seedProjects)
-  return seedProjects
+function writeJson(key, value) { localStorage.setItem(key, JSON.stringify(value)) }
+function getSession() { return readJson(SESSION_KEY, {}) }
+
+export class ApiError extends Error {
+  constructor(message, status, details) { super(message); this.name = 'ApiError'; this.status = status; this.details = details }
+}
+
+function errorMessage(payload, fallback) {
+  if (Array.isArray(payload?.detail)) return payload.detail.map((item) => item.msg).join(', ')
+  return payload?.detail || payload?.user_message || payload?.message || fallback
+}
+
+async function refreshAccessToken(refreshToken) {
+  const response = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+  if (!response.ok) return false
+  writeJson(SESSION_KEY, { ...getSession(), ...(await response.json()) })
+  return true
+}
+
+async function request(path, options = {}, canRetry = true) {
+  const session = getSession()
+  const headers = new Headers(options.headers || {})
+  if (!(options.body instanceof FormData) && options.body !== undefined) headers.set('Content-Type', 'application/json')
+  if (session.access_token) headers.set('Authorization', `Bearer ${session.access_token}`)
+  let response
+  try { response = await fetch(`${API_URL}${path}`, { ...options, headers }) }
+  catch (error) { throw new ApiError('Cannot connect to the API. Confirm the backend is running on port 8000.', 0, error) }
+  if (response.status === 401 && canRetry && session.refresh_token) {
+    if (await refreshAccessToken(session.refresh_token)) return request(path, options, false)
+    localStorage.removeItem(SESSION_KEY)
+  }
+  if (!response.ok) {
+    let payload = null
+    try { payload = await response.json() } catch { /* response has no JSON body */ }
+    throw new ApiError(errorMessage(payload, `Request failed with HTTP ${response.status}`), response.status, payload)
+  }
+  if (response.status === 204) return null
+  return response.json()
+}
+
+function rememberSpecification(projectId, specification) {
+  const specs = readJson(PROJECT_SPECS_KEY, {})
+  specs[String(projectId)] = specification
+  writeJson(PROJECT_SPECS_KEY, specs)
+}
+
+function getRememberedSpecification(projectId) {
+  return readJson(PROJECT_SPECS_KEY, {})[String(projectId)] || null
+}
+
+function normalizeProject(project) {
+  return { progress: 0, tests: 0, passed: 0, failed: 0, coverage: 0, status: 'Ready', ...project }
+}
+
+function normalizeReport(report) {
+  return {
+    ...report,
+    test_details: (report.test_evidence || []).map((test) => ({
+      id: test.id, method: test.method, path: test.endpoint_path, category: test.category,
+      name: test.description, expected: test.expected_status, actual: test.actual_status,
+      passed: test.is_passed, reason: test.reason, error: test.error_message,
+    })),
+  }
 }
 
 export const authService = {
-  hasSession: () => Boolean(readStorage(STORAGE_KEYS.session, null)),
-  saveSession: (session) => writeStorage(STORAGE_KEYS.session, session),
-  clearSession: () => localStorage.removeItem(STORAGE_KEYS.session),
-  login: async ({ email, password }) => {
-    const validLocalUser = readStorage(STORAGE_KEYS.users, []).some((user) => user.email === email && user.password === password)
-    const validDemoUser = email === 'demo@qapilot.dev' && password === 'demo1234'
-    if (!validLocalUser && !validDemoUser) throw new Error('Incorrect credentials. Use demo@qapilot.dev / demo1234')
-    return delay({ access_token: 'demo-session', user: { email } })
-  },
-  signup: async (details) => {
-    const users = readStorage(STORAGE_KEYS.users, [])
-    if (users.some((user) => user.email === details.email)) throw new Error('An account with this email already exists')
-    writeStorage(STORAGE_KEYS.users, [...users, details])
-    return delay({ id: Date.now(), ...details })
+  hasSession: () => Boolean(getSession().access_token),
+  saveSession: (session) => writeJson(SESSION_KEY, session),
+  clearSession: () => localStorage.removeItem(SESSION_KEY),
+  login: (credentials) => request('/api/v1/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+  signup: (details) => request('/api/v1/auth/signup', { method: 'POST', body: JSON.stringify(details) }),
+  logout: async () => {
+    const { refresh_token } = getSession()
+    try { if (refresh_token) await request('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ refresh_token }) }, false) }
+    finally { localStorage.removeItem(SESSION_KEY) }
   },
 }
 
 export const projectService = {
-  list: () => delay(getProjects(), 250),
-  getById: async (projectId) => delay(getProjects().find((project) => String(project.id) === String(projectId)) ?? null, 150),
-  create: (details) => {
-    const project = { id: Date.now(), ...details, created_at: new Date().toISOString(), progress: 0, tests: 0, passed: 0, failed: 0, coverage: 0, status: 'New' }
-    writeStorage(STORAGE_KEYS.projects, [project, ...getProjects()])
-    return delay(project)
+  list: async () => (await request('/api/v1/projects/')).map(normalizeProject),
+  getById: async (projectId) => {
+    try { return normalizeProject(await request(`/api/v1/projects/${projectId}`)) }
+    catch (error) { if (error.status === 404) return null; throw error }
   },
+  create: async (details) => normalizeProject(await request('/api/v1/projects/', { method: 'POST', body: JSON.stringify(details) })),
+  listSpecifications: (projectId) => request(`/api/v1/projects/${projectId}/specifications`),
+  getSpecification: getRememberedSpecification,
 }
 
 export const qaService = {
-  uploadSpec: (_projectId, version, file) => delay({ id: Date.now(), filename: file.name, version, uploaded_at: new Date().toISOString() }, 700),
-  parseSpec: () => delay(demoEndpoints, 900),
-  generateAll: () => delay({ total_tests_generated: 74 }, 1200),
-  executeAll: () => delay({ total_tests_executed: 74, total_passed: 69, total_failed: 5 }, 1400),
-  getReport: () => delay({
-    total_tests_executed: 74, total_passed: 69, total_failed: 5, pass_rate_percentage: 93.2, coverage_percentage: 88, total_execution_time_ms: 2481,
-    endpoint_details: demoEndpoints.map((endpoint, index) => ({ endpoint_id: endpoint.id, method: endpoint.method, path: endpoint.path, passed: 10 + (index % 3), failed: index % 3 === 0 ? 1 : 0 })),
-    test_details: [
-      { id: 1, method: 'GET', path: '/users', category: 'Positive', name: 'Returns the user collection', expected: 200, actual: 200, passed: true, reason: 'Response status and collection schema matched the OpenAPI contract.' },
-      { id: 2, method: 'POST', path: '/users', category: 'Validation', name: 'Rejects a missing email address', expected: 422, actual: 422, passed: true, reason: 'The API correctly rejected the invalid payload with a validation response.' },
-      { id: 3, method: 'GET', path: '/users/{id}', category: 'Negative', name: 'Unknown user returns not found', expected: 404, actual: 500, passed: false, reason: 'Expected HTTP 404 but received HTTP 500.', error: 'Unhandled lookup error returned by the service instead of a not-found response.' },
-      { id: 4, method: 'PATCH', path: '/users/{id}', category: 'Boundary', name: 'Accepts maximum display-name length', expected: 200, actual: 200, passed: true, reason: 'Boundary payload was accepted and the response matched the expected schema.' },
-      { id: 5, method: 'DELETE', path: '/users/{id}', category: 'Authorization', name: 'Blocks deletion without a token', expected: 401, actual: 403, passed: false, reason: 'Expected HTTP 401 but received HTTP 403.', error: 'Authorization behavior differs from the documented contract.' },
-    ],
-  }),
+  uploadSpec: async (projectId, version, file) => {
+    const form = new FormData(); form.append('file', file)
+    const spec = await request(`/api/v1/projects/${projectId}/specifications?version=${encodeURIComponent(version)}`, { method: 'POST', body: form })
+    rememberSpecification(projectId, spec)
+    return spec
+  },
+  parseSpec: (specId) => request(`/api/v1/specifications/${specId}/parse`, { method: 'POST' }),
+  generateAll: (specId) => request(`/api/v1/test-cases/generate-all/${specId}`, { method: 'POST' }),
+  getGenerationStatus: (taskId) => request(`/api/v1/test-cases/tasks/${taskId}`),
+  executeAll: (specId, execution) => request(`/api/v1/execution/run-all/${specId}`, { method: 'POST', body: JSON.stringify(execution) }),
+  getReport: async (specId) => normalizeReport(await request(`/api/v1/reports/specifications/${specId}`)),
 }
