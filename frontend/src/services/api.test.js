@@ -1,28 +1,22 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { authService, projectService, qaService } from './api'
 
 describe('standalone frontend services', () => {
-  beforeEach(() => { localStorage.clear(); global.fetch = vi.fn() })
+  beforeEach(() => localStorage.clear())
 
-  it('uses backend login and stores the JWT session', async () => {
-    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'access', refresh_token: 'refresh', token_type: 'bearer' }), { status: 200 }))
-    const session = await authService.login({ email: 'qa@example.com', password: 'password1' })
+  it('supports the built-in demo login and browser session', async () => {
+    const session = await authService.login({ email: 'demo@qapilot.dev', password: 'demo1234' })
     authService.saveSession(session)
     expect(authService.hasSession()).toBe(true)
-    expect(fetch.mock.calls[0][0]).toBe('/api/v1/auth/login')
     authService.clearSession()
     expect(authService.hasSession()).toBe(false)
   })
 
-  it('uses backend signup and refresh endpoints', async () => {
-    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 1, email: 'qa@example.com', username: 'qa-user' }), { status: 201 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'new-access', token_type: 'bearer' }), { status: 200 }))
+  it('supports local signup followed by login', async () => {
     await authService.signup({ email: 'qa@example.com', username: 'qa-user', password: 'password1' })
-    authService.saveSession({ access_token: 'old-access', refresh_token: 'refresh' })
-    expect((await authService.refresh()).access_token).toBe('new-access')
-    expect(fetch.mock.calls[0][0]).toBe('/api/v1/auth/signup')
-    expect(fetch.mock.calls[1][0]).toBe('/api/v1/auth/refresh')
+    const session = await authService.login({ email: 'qa@example.com', password: 'password1' })
+    expect(session.access_token).toBe('demo-session')
   })
 
   it('seeds dashboard projects and supports direct project lookup', async () => {

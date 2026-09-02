@@ -1,27 +1,9 @@
 // Browser-local adapter used by the frontend preview. The exported service
 // boundaries can later delegate to HTTP without changing page components.
 const STORAGE_KEYS = { session: 'qa_demo_session', users: 'qa_demo_users', projects: 'qa_demo_projects' }
-const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 const delay = (value, milliseconds = 450) => new Promise((resolve) => setTimeout(() => resolve(value), milliseconds))
 const readStorage = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback } catch { return fallback } }
 const writeStorage = (key, value) => localStorage.setItem(key, JSON.stringify(value))
-
-async function authRequest(path, body) {
-  let response
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    })
-  } catch {
-    throw new Error('Cannot connect to authentication service. Confirm FastAPI is running on port 8000.')
-  }
-  if (!response.ok) {
-    let payload = null
-    try { payload = await response.json() } catch { /* response body is empty */ }
-    throw new Error(payload?.detail || payload?.user_message || 'Authentication request failed.')
-  }
-  return response.status === 204 ? null : response.json()
-}
 
 const seedProjects = [
   { id: 101, name: 'Payments API', description: 'Checkout, refunds, and payment method coverage', created_at: '2026-08-21T10:00:00Z', progress: 100, tests: 148, passed: 139, failed: 9, coverage: 96, status: 'Healthy' },
@@ -48,20 +30,17 @@ export const authService = {
   hasSession: () => Boolean(readStorage(STORAGE_KEYS.session, null)),
   saveSession: (session) => writeStorage(STORAGE_KEYS.session, session),
   clearSession: () => localStorage.removeItem(STORAGE_KEYS.session),
-  login: (credentials) => authRequest('/api/v1/auth/login', credentials),
-  signup: (details) => authRequest('/api/v1/auth/signup', details),
-  refresh: async () => {
-    const session = readStorage(STORAGE_KEYS.session, {})
-    if (!session.refresh_token) return null
-    const access = await authRequest('/api/v1/auth/refresh', { refresh_token: session.refresh_token })
-    const refreshed = { ...session, ...access }
-    writeStorage(STORAGE_KEYS.session, refreshed)
-    return refreshed
+  login: async ({ email, password }) => {
+    const validLocalUser = readStorage(STORAGE_KEYS.users, []).some((user) => user.email === email && user.password === password)
+    const validDemoUser = email === 'demo@qapilot.dev' && password === 'demo1234'
+    if (!validLocalUser && !validDemoUser) throw new Error('Incorrect credentials. Use demo@qapilot.dev / demo1234')
+    return delay({ access_token: 'demo-session', user: { email } })
   },
-  logout: async () => {
-    const session = readStorage(STORAGE_KEYS.session, {})
-    try { if (session.refresh_token) await authRequest('/api/v1/auth/logout', { refresh_token: session.refresh_token }) }
-    finally { localStorage.removeItem(STORAGE_KEYS.session) }
+  signup: async (details) => {
+    const users = readStorage(STORAGE_KEYS.users, [])
+    if (users.some((user) => user.email === details.email)) throw new Error('An account with this email already exists')
+    writeStorage(STORAGE_KEYS.users, [...users, details])
+    return delay({ id: Date.now(), ...details })
   },
 }
 
