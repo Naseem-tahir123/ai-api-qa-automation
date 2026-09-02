@@ -1,6 +1,6 @@
 # QA Pilot frontend
 
-React + Vite + Tailwind frontend preview for the AI API QA Automation product. It currently runs independently with browser-local demo data and makes no backend requests.
+React + Vite + Tailwind frontend for the AI API QA Automation product. Authentication is integrated with FastAPI; project and QA workflows currently remain browser-local demos.
 
 ## Run locally
 
@@ -10,14 +10,7 @@ npm.cmd install
 npm.cmd run dev
 ```
 
-Open `http://127.0.0.1:5173`. No backend process is required.
-
-Demo login:
-
-- Email: `demo@qapilot.dev`
-- Password: `demo1234`
-
-You can also create a local account from the signup screen. Accounts, projects, and sessions are stored only in browser `localStorage`.
+Start FastAPI on `http://127.0.0.1:8000`, then open `http://127.0.0.1:5173`. Signup, login, refresh tokens, and logout use the backend authentication endpoints. Projects and QA simulations remain in browser `localStorage` until their integration phase.
 
 ## Product flow
 

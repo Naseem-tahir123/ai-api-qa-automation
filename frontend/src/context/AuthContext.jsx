@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
     await authService.signup(details)
     await login({ email: details.email, password: details.password })
   }, [login])
-  const logout = useCallback(() => { authService.clearSession(); setAuthenticated(false) }, [])
+  const logout = useCallback(() => { setAuthenticated(false); authService.logout().catch(() => authService.clearSession()) }, [])
   const value = useMemo(() => ({ isAuthenticated, login, signup, logout }), [isAuthenticated, login, signup, logout])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
