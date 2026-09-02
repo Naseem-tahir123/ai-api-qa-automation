@@ -63,7 +63,7 @@ class ScenarioStep(Base):
     ) # Example: [{"target":"path", "field":"uuid", "use_memory": "user_id"}]
     expected_status = Column(Integer, nullable=False)
     scenario = relationship("TestScenario", back_populates = "steps")
-    endpoint = relationship("Endpoint")
+    endpoint = relationship("Endpoint", back_populates="scenario_steps")
 
     # Link Results directly to Steps
     results = relationship("TestResult", back_populates = "step", cascade="all, delete-orphan")

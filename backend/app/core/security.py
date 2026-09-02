@@ -4,10 +4,6 @@ from urllib.parse import urlparse
 from app.core.config import settings
 
 def validate_target_url(url: str) -> str:
-    print("--- DEBUG SSRF ---")
-    print("ALLOW_INTERNAL_TARGETS VALUE:", settings.ALLOW_INTERNAL_TARGETS)
-    print("------------------")
-    
     parsed = urlparse(url)
     # Schema and hostname validation
     if parsed.scheme not in ("http", "https"):

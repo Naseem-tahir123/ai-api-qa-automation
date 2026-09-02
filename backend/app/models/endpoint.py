@@ -26,8 +26,8 @@ class Endpoint(Base):
 
     # Define relationships with related database models.
     specification = relationship("APISpecification", back_populates="endpoints")
-    test_cases = relationship(
-        "TestCase",
+    scenario_steps = relationship(
+        "ScenarioStep",
         back_populates="endpoint",
         cascade="all, delete-orphan"
     )

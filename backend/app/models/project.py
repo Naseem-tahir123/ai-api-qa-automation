@@ -13,3 +13,4 @@ class Project(Base):
 
     # A project can contain multiple API specifications.
     specifications = relationship("APISpecification", back_populates="project", cascade="all, delete-orphan")
+    environments = relationship("ProjectEnvironment", back_populates="project", cascade="all, delete-orphan")

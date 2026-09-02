@@ -6,3 +6,4 @@ from app.models.user import User
 from app.models.refresh_token import RefreshToken  # noqa
 from app.models.password_reset_token import PasswordResetToken  # noqa
 from app.models.scenario import TestScenario, ScenarioStep
+from app.models.environment import ProjectEnvironment
