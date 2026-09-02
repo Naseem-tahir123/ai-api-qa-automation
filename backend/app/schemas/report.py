@@ -22,19 +22,6 @@ class EndpointSummary(BaseModel):
     failed: int
     avg_execution_time_ms: float
 
-class TestEvidence(BaseModel):
-    id: int
-    endpoint_path: str
-    method: str
-    category: str
-    description: str
-    expected_status: int
-    actual_status: Optional[int]
-    is_passed: bool
-    execution_time_ms: Optional[float]
-    reason: str
-    error_message: Optional[str]
-
 # 3. Master QA Report
 class ProjectQA_Report(BaseModel):
     project_id: int
@@ -57,5 +44,4 @@ class ProjectQA_Report(BaseModel):
     
     # Detailed Data
     endpoint_details: List[EndpointSummary]
-    actionable_failures: List[FailureDetail]
-    test_evidence: List[TestEvidence]
+    actionable_failures: List[FailureDetail]   

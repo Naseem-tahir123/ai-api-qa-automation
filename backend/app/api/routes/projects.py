@@ -59,19 +59,6 @@ async def get_project(project_id: int, db: AsyncSession = Depends(get_db)):
     return project
 
 
-@router.get("/{project_id}/specifications", response_model=List[APISpecificationResponse])
-async def get_project_specifications(project_id: int, db: AsyncSession = Depends(get_db)):
-    project = await db.scalar(select(Project).where(Project.id == project_id))
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    result = await db.execute(
-        select(APISpecification)
-        .where(APISpecification.project_id == project_id)
-        .order_by(APISpecification.uploaded_at.desc())
-    )
-    return result.scalars().all()
-
-
 # --- 4. UPLOAD AN API SPECIFICATION FILE ---
 @router.post("/{project_id}/specifications", response_model=APISpecificationResponse, status_code=201)
 async def upload_specification(
