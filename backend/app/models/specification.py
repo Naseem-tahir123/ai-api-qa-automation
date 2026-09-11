@@ -17,3 +17,5 @@ class APISpecification(Base):
     # Each API specification belongs to one project.
     project = relationship("Project", back_populates="specifications")
     endpoints = relationship("Endpoint", back_populates="specification", cascade="all, delete-orphan")
+    qa_ir_snapshot = relationship("QAIRSnapshot", back_populates="specification", cascade="all, delete-orphan", uselist=False)
+    coverage_plans = relationship("CoveragePlan", back_populates="specification", cascade="all, delete-orphan")

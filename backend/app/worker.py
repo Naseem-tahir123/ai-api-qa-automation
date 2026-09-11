@@ -8,9 +8,12 @@ from app.models.specification import APISpecification
 from app.models.scenario import TestScenario, ScenarioStep
 from app.models.test_result import TestResult
 from app.models.auth_profile import AuthProfile, TestIdentity
+from app.models.qa_artifacts import QAIRSnapshot, CoveragePlan
 from app.services.ai_generator import get_ai_generator
 from app.services.auth_runtime import AuthenticationError, build_auth_session
 from app.services.workflow_executor import unified_pipeline_app
+from app.services.qa_ir import build_qa_ir
+from app.services.coverage_planner import plan_coverage
 import time
 import json
 
@@ -26,11 +29,38 @@ async def generate_pipeline_task(ctx, spec_id: int):
 
         if not spec: return {"status": "failed", "error": "Spec not found"}
 
-        endpoints_info = [{"path": e.path, "method": e.method, "summary": e.summary, "parameters": e.parameters, "request_schema": e.request_schema, "response_schema": e.response_schema} for e in spec.endpoints]
-
-        ai_gen = get_ai_generator()
         try:
-            ai_scenarios = ai_gen.generate_scenarios(endpoints_info)
+            if not spec.endpoints:
+                return {"status": "failed", "error": "Specification has no parsed endpoints"}
+
+            # Phase 3/4: generation receives compact, resource-scoped QA-IR,
+            # not an entire raw OpenAPI document.
+            qa_ir = build_qa_ir(spec.endpoints, spec.version)
+            if spec.qa_ir_snapshot:
+                spec.qa_ir_snapshot.fingerprint, spec.qa_ir_snapshot.document = qa_ir["fingerprint"], qa_ir
+            else:
+                db.add(QAIRSnapshot(specification_id=spec.id, fingerprint=qa_ir["fingerprint"], document=qa_ir))
+            coverage = plan_coverage(qa_ir)
+            db.add(CoveragePlan(specification_id=spec.id, fingerprint=qa_ir["fingerprint"], plan=coverage))
+
+            endpoint_ids = {(e.method.upper(), e.path): e.id for e in spec.endpoints}
+            by_resource = {}
+            for endpoint in qa_ir["endpoints"]:
+                by_resource.setdefault(endpoint["resource"], []).append(endpoint)
+
+            ai_gen = get_ai_generator()
+            ai_scenarios = []
+            for resource, endpoints in by_resource.items():
+                relevant_intents = [item for item in coverage["selected_intents"] if item["endpoint_id"] in {e["id"] for e in endpoints}]
+                compact_context = [{key: endpoint[key] for key in ("path", "method", "summary", "parameters", "request_schema", "responses", "security", "crud", "access", "resource_ids")} for endpoint in endpoints]
+                generated = ai_gen.generate_scenarios(compact_context, intents=relevant_intents, domain=resource)
+                # Mandatory validation: do not silently attach an unknown LLM step
+                # to an arbitrary endpoint.
+                for scenario in generated:
+                    for step in scenario.steps:
+                        if (step.endpoint_method.upper(), step.endpoint_path) not in endpoint_ids:
+                            raise ValueError(f"Generated step references an unknown endpoint: {step.endpoint_method} {step.endpoint_path}")
+                ai_scenarios.extend(generated)
             
             # Clear old scenarios for this spec
             await db.execute(delete(TestScenario).where(TestScenario.specification_id == spec_id))
@@ -42,8 +72,7 @@ async def generate_pipeline_task(ctx, spec_id: int):
                 await db.flush()
 
                 for i, step_data in enumerate(s_data.steps):
-                    matched_endpoint = next((e for e in spec.endpoints if e.path == step_data.endpoint_path and e.method == step_data.endpoint_method), None)
-                    ep_id = matched_endpoint.id if matched_endpoint else spec.endpoints[0].id
+                    ep_id = endpoint_ids[(step_data.endpoint_method.upper(), step_data.endpoint_path)]
 
                     new_step = ScenarioStep(
                         scenario_id=new_scenario.id,
@@ -61,7 +90,7 @@ async def generate_pipeline_task(ctx, spec_id: int):
                     )
                     db.add(new_step)
             await db.commit()
-            return {"status": "completed", "message": "Pipeline generated successfully"}
+            return {"status": "completed", "message": "Pipelines generated successfully", "scenarios": len(ai_scenarios), "domains": len(by_resource)}
         except Exception as e:
             await db.rollback()
             return {"status": "failed", "error": str(e)}
@@ -148,7 +177,10 @@ async def run_pipeline_task(ctx, pipeline_id: int, base_url: str, test_identity_
                 is_passed=res["is_passed"],
                 response_body=res["response_body"],
                 execution_time_ms=res["execution_time_ms"],
-                error_message=res["error_message"]
+                error_message=res["error_message"],
+                failure_classification=res.get("failure_classification"),
+                request_metadata=res.get("request_metadata"),
+                response_metadata=res.get("response_metadata"),
             ))
         await db.commit()
 

@@ -8,3 +8,4 @@ from app.models.password_reset_token import PasswordResetToken  # noqa
 from app.models.scenario import TestScenario, ScenarioStep
 from app.models.environment import ProjectEnvironment
 from app.models.auth_profile import AuthProfile, TestIdentity
+from app.models.qa_artifacts import QAIRSnapshot, CoveragePlan

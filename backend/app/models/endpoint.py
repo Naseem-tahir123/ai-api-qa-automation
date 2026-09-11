@@ -23,6 +23,7 @@ class Endpoint(Base):
     response_schema = Column(JSON, nullable=True)
     parameters = Column(JSON, nullable=True)
     security = Column(JSON, nullable=True)
+    tags = Column(JSON, nullable=True)
 
     # Define relationships with related database models.
     specification = relationship("APISpecification", back_populates="endpoints")

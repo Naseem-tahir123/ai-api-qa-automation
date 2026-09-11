@@ -2,6 +2,7 @@
 backend/.venv/
 backend/venv/
 backend/uploads
+backend/docs
 backend/__pycache__/
 *.pyc
 .env

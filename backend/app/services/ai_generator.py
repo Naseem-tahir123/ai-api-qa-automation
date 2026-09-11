@@ -23,11 +23,12 @@ class AITestGenerator:
         )
 
 
-    def generate_scenarios(self, spec_endpoints_info: list):
+    def generate_scenarios(self, spec_endpoints_info: list, intents: list | None = None, domain: str = "API"):
         """
         Takes a list of all endpoints in a spec and generates Unified Smart Pipelines.
         """
         endpoints_json_str = json.dumps(spec_endpoints_info, indent=2)
+        intents_json_str = json.dumps(intents or [], indent=2)
 
         prompt = ChatPromptTemplate.from_messages([
             (
@@ -54,10 +55,13 @@ class AITestGenerator:
             (
                 "human",
                 """
-                Analyze the following API endpoints and generate 2 to 3 Unified Smart Pipelines (Scenarios).
+                Analyze the following API endpoints for the {domain} domain and generate 1 to 3 Unified Smart Pipelines (Scenarios).
                 
                 API Endpoints:
                 {endpoints_data}
+
+                Required deterministic test intents (cover each applicable intent):
+                {test_intents}
 
                 IMPORTANT RULES:
                 1. A scenario represents an end-to-end journey (e.g. Auth Flow, Document CRUD).
@@ -75,7 +79,7 @@ class AITestGenerator:
         chain = prompt | self.scenario_llm
 
         result = chain.invoke(
-            {"endpoints_data": endpoints_json_str},
+            {"endpoints_data": endpoints_json_str, "test_intents": intents_json_str, "domain": domain},
             config={
                 "run_name": "Generate Unified Pipelines",
                 "tags": ["pipeline_generation"],

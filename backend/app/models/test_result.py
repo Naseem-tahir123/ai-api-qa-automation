@@ -14,6 +14,9 @@ class TestResult(Base):
     response_body = Column(JSON, nullable=True)  # Response body returned by the target API.
     execution_time_ms = Column(Float, nullable=True)  # Request duration in milliseconds.
     error_message = Column(String, nullable=True)  # Connection or execution failure details.
+    failure_classification = Column(String, nullable=True)
+    request_metadata = Column(JSON, nullable=True)
+    response_metadata = Column(JSON, nullable=True)
     executed_at = Column(DateTime(timezone=True), server_default=func.now())
 
     step = relationship("ScenarioStep", back_populates="results")

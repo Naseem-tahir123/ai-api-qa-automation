@@ -9,6 +9,17 @@ from jsonpath_ng import parse
 from app.services.auth_runtime import AuthSession
 from app.services.secrets import redact
 
+def _failure_classification(status: int | None, error: str | None) -> str | None:
+    if error:
+        return "network_error"
+    if status in {401, 403}:
+        return "authentication_failure"
+    if status and 500 <= status:
+        return "server_error"
+    if status and 400 <= status:
+        return "validation_failure"
+    return "contract_mismatch" if status is not None else None
+
 # =========================================================================
 # 1. STATE DEFINITION (Global Memory & Tracking)
 # =========================================================================
@@ -115,6 +126,9 @@ async def _execute_single_step(step: Dict[str, Any], memory: Dict[str, Any], bas
         "response_body": redact(response_data),
         "execution_time_ms": round((time.time() - start_time) * 1000, 2),
         "error_message": error_msg
+        ,"failure_classification": None if is_passed else _failure_classification(actual_status, error_msg)
+        ,"request_metadata": redact({"method": method, "path": path, "query": params, "headers": headers})
+        ,"response_metadata": redact({"status": actual_status})
     }
 
 # =========================================================================

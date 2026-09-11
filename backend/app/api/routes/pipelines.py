@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 
 from app.db.database import get_db
 from app.models.specification import APISpecification
-from app.models.scenario import TestScenario
+from app.models.scenario import TestScenario, ScenarioStep
 from app.models.environment import ProjectEnvironment
 from app.models.auth_profile import AuthProfile, TestIdentity
 from app.api.deps import get_current_user
@@ -25,6 +26,7 @@ class PipelineExecutionRequest(BaseModel):
     environment_id: Optional[int] = None
     test_identity_id: Optional[int] = None
     allow_production: bool = False
+    allow_destructive: bool = False
     
     @field_validator("target_base_url")
     @classmethod
@@ -62,6 +64,13 @@ async def run_pipeline(
     db: AsyncSession = Depends(get_db),
     redis = Depends(get_redis_pool),
 ):
+    scenario_result = await db.execute(select(TestScenario).options(selectinload(TestScenario.steps).selectinload(ScenarioStep.endpoint)).where(TestScenario.id == pipeline_id))
+    safety_scenario = scenario_result.scalar_one_or_none()
+    if not safety_scenario:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    has_destructive_step = any(step.endpoint.method.upper() == "DELETE" for step in safety_scenario.steps)
+    if has_destructive_step and not request.allow_destructive:
+        raise HTTPException(status_code=403, detail="This pipeline has destructive steps. Set allow_destructive=true after approving the target environment.")
     target_base_url = request.target_base_url
     verify_tls = True
 

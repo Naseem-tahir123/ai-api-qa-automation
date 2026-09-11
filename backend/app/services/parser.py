@@ -57,7 +57,8 @@ class OpenAPIParser:
                     "request_schema": details.get("requestBody", {}),
                     "response_schema": details.get("responses", {}),
                     "parameters": details.get("parameters", []),
-                    "security": operation_security
+                    "security": operation_security,
+                    "tags": details.get("tags", []),
                 }
 
                 endpoints_list.append(endpoint_data)
