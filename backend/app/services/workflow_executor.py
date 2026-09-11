@@ -6,6 +6,8 @@ import asyncio
 from typing import TypedDict, List, Dict, Any
 from langgraph.graph import StateGraph, END
 from jsonpath_ng import parse
+from app.services.auth_runtime import AuthSession
+from app.services.secrets import redact
 
 # =========================================================================
 # 1. STATE DEFINITION (Global Memory & Tracking)
@@ -19,20 +21,23 @@ class PipelineState(TypedDict):
     cleanup_warnings: List[str]    # To track teardown failures
     base_url: str
     verify_tls: bool
-    auth_config: dict
+    auth_session: AuthSession | None
 
 # =========================================================================
 # 2. HELPER: SINGLE STEP EXECUTOR
 # =========================================================================
-async def _execute_single_step(step: Dict[str, Any], memory: Dict[str, Any], base_url: str, auth_config: dict, client: httpx.AsyncClient) -> Dict[str, Any]:
+async def _execute_single_step(step: Dict[str, Any], memory: Dict[str, Any], base_url: str, auth_session: AuthSession | None, client: httpx.AsyncClient) -> Dict[str, Any]:
     method = step.get("endpoint_method", "GET").upper()
     path = step.get("endpoint_path", "")
     payload = step.get("payload") or {}
     params = step.get("query_params") or {}
     headers = {}
 
-    if auth_config.get("token"):
-        headers["Authorization"] = f"Bearer {auth_config['token']}"
+    auth_headers, auth_params, auth_cookies = {}, {}, {}
+    if auth_session:
+        auth_headers, auth_params, auth_cookies = auth_session.request_components()
+        headers.update(auth_headers)
+        params.update(auth_params)
 
     # --- INJECT RULES (Memory to Request) ---
     inject_rules = step.get("inject_rules") or []
@@ -64,8 +69,22 @@ async def _execute_single_step(step: Dict[str, Any], memory: Dict[str, Any], bas
             url=full_url,
             json=payload if payload and method in ["POST", "PUT", "PATCH"] else None,
             params=params if params else None,
-            headers=headers if headers else None
+            headers=headers if headers else None,
+            cookies=auth_cookies or None,
         )
+        # Re-login only after 401 and retry only idempotent/safe requests.
+        if response.status_code == 401 and auth_session and method in {"GET", "HEAD", "OPTIONS"}:
+            await auth_session.reauthenticate_after_unauthorized(client)
+            refreshed_headers, refreshed_params, refreshed_cookies = auth_session.request_components()
+            headers.update(refreshed_headers)
+            params.update(refreshed_params)
+            response = await client.request(
+                method=method,
+                url=full_url,
+                params=params if params else None,
+                headers=headers if headers else None,
+                cookies=refreshed_cookies or None,
+            )
         actual_status = response.status_code
         try:
             response_data = response.json()
@@ -84,7 +103,7 @@ async def _execute_single_step(step: Dict[str, Any], memory: Dict[str, Any], bas
                 except Exception:
                     pass
     except Exception as e:
-        error_msg = f"Request Failed: {str(e)}"
+        error_msg = redact(f"Request Failed: {str(e)}")
 
     expected_status = step.get("expected_status")
     is_passed = (actual_status == expected_status)
@@ -93,7 +112,7 @@ async def _execute_single_step(step: Dict[str, Any], memory: Dict[str, Any], bas
         "scenario_step_id": step.get("id"),
         "actual_status": actual_status,
         "is_passed": is_passed,
-        "response_body": response_data,
+        "response_body": redact(response_data),
         "execution_time_ms": round((time.time() - start_time) * 1000, 2),
         "error_message": error_msg
     }
@@ -107,7 +126,7 @@ async def node_setup(state: PipelineState) -> PipelineState:
     
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=False, verify=state["verify_tls"]) as client:
         for step in setup_steps:
-            result = await _execute_single_step(step, state["memory"], state["base_url"], state["auth_config"], client)
+            result = await _execute_single_step(step, state["memory"], state["base_url"], state["auth_session"], client)
             state["results"].append(result)
             
             if not result["is_passed"]:
@@ -126,14 +145,14 @@ async def node_test(state: PipelineState) -> PipelineState:
     
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=False, verify=state["verify_tls"]) as client:
         # ⚡ 1. Run Safe Tests in Parallel (Ultra Fast)
-        tasks = [_execute_single_step(step, state["memory"], state["base_url"], state["auth_config"], client) for step in safe_tests]
+        tasks = [_execute_single_step(step, state["memory"], state["base_url"], state["auth_session"], client) for step in safe_tests]
         safe_results = await asyncio.gather(*tasks, return_exceptions=True)
         for res in safe_results:
             if isinstance(res, dict): state["results"].append(res)
             
         # 🐢 2. Run Mutating Tests Sequentially (Safe)
         for step in mutating_tests:
-            result = await _execute_single_step(step, state["memory"], state["base_url"], state["auth_config"], client)
+            result = await _execute_single_step(step, state["memory"], state["base_url"], state["auth_session"], client)
             state["results"].append(result)
 
     return state
@@ -144,7 +163,7 @@ async def node_teardown(state: PipelineState) -> PipelineState:
     
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=False, verify=state["verify_tls"]) as client:
         for step in teardown_steps:
-            result = await _execute_single_step(step, state["memory"], state["base_url"], state["auth_config"], client)
+            result = await _execute_single_step(step, state["memory"], state["base_url"], state["auth_session"], client)
             state["results"].append(result)
             
             if not result["is_passed"]:

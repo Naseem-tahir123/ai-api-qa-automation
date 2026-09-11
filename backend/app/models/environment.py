@@ -19,3 +19,4 @@ class ProjectEnvironment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="environments")
+    auth_profiles = relationship("AuthProfile", back_populates="environment", cascade="all, delete-orphan")

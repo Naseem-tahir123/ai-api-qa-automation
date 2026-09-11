@@ -2,7 +2,7 @@ import os
 import json  # <-- Used to convert Python dictionaries into valid JSON strings
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from app.schemas.test_case import AITestPlan
+# from app.schemas.test_case import AITestPlan
 from app.schemas.scenario import AITestScenarioPlan
 
 
@@ -14,18 +14,18 @@ class AITestGenerator:
             api_key=os.getenv("OPENAI_API_KEY")
         )
 
-        # FIX 1: Use json_mode to prevent OpenAI structured output parsing issues
-      
-
         self.scenario_llm = self.llm.with_structured_output(
             AITestScenarioPlan,
-            method = "json_mode"
+            # Fall back to function calling because our Pydantic schema contains
+            # unstructured types like Dict[str, Any] which OpenAI's strict
+            # 'json_schema' method does not support.
+            method="function_calling",
         )
 
 
     def generate_scenarios(self, spec_endpoints_info: list):
         """
-        Takes a lish of all endpoints in a spec and generates Unified Smart Pipelines.
+        Takes a list of all endpoints in a spec and generates Unified Smart Pipelines.
         """
         endpoints_json_str = json.dumps(spec_endpoints_info, indent=2)
 
@@ -45,8 +45,8 @@ class AITestGenerator:
                 3. TEARDOWN (step_type: 'teardown'): Delete the created resources to clean the database. (If no DELETE endpoint exists, skip teardown gracefully).
 
                 Memory Rules:
-                - `extract_rules`: {"json_path": "$.id", "save_as": "doc_id"}
-                - `inject_rules`: {"target": "path", "field": "id", "use_memory": "doc_id"}
+                - `extract_rules`: {{"json_path": "$.id", "save_as": "doc_id"}}
+                - `inject_rules`: {{"target": "path", "field": "id", "use_memory": "doc_id"}}
 
                 Generate ONLY valid JSON matching the schema.
                 """

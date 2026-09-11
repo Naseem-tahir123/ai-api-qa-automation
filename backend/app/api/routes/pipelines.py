@@ -1,14 +1,14 @@
-import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional, Dict
+from pydantic import BaseModel, field_validator, model_validator
+from typing import Optional
 
 from app.db.database import get_db
 from app.models.specification import APISpecification
 from app.models.scenario import TestScenario
 from app.models.environment import ProjectEnvironment
+from app.models.auth_profile import AuthProfile, TestIdentity
 from app.api.deps import get_current_user
 from app.core.security import validate_target_url
 from arq import create_pool
@@ -23,8 +23,8 @@ async def get_redis_pool():
 class PipelineExecutionRequest(BaseModel):
     target_base_url: Optional[str] = None
     environment_id: Optional[int] = None
+    test_identity_id: Optional[int] = None
     allow_production: bool = False
-    auth_config: Dict[str, str] = Field(default_factory=dict)
     
     @field_validator("target_base_url")
     @classmethod
@@ -40,6 +40,8 @@ class PipelineExecutionRequest(BaseModel):
     def require_execution_target(self):
         if bool(self.target_base_url) == bool(self.environment_id):
             raise ValueError("Provide exactly one of target_base_url or environment_id.")
+        if self.test_identity_id and not self.environment_id:
+            raise ValueError("test_identity_id requires environment_id.")
         return self
 
 # 1. GENERATE PIPELINE (AI Phase)
@@ -90,8 +92,20 @@ async def run_pipeline(
         target_base_url = environment.base_url
         verify_tls = environment.verify_tls
 
+        if request.test_identity_id:
+            result = await db.execute(
+                select(TestIdentity)
+                .join(AuthProfile, TestIdentity.auth_profile_id == AuthProfile.id)
+                .filter(
+                    TestIdentity.id == request.test_identity_id,
+                    AuthProfile.environment_id == environment.id,
+                )
+            )
+            if not result.scalar_one_or_none():
+                raise HTTPException(status_code=404, detail="Test identity not found for this environment")
+
     job = await redis.enqueue_job(
-        "run_pipeline_task", pipeline_id, target_base_url, request.auth_config, verify_tls
+        "run_pipeline_task", pipeline_id, target_base_url, request.test_identity_id, verify_tls
     )
     return {"message": "Pipeline execution started.", "task_id": job.job_id, "status": "queued"}
 

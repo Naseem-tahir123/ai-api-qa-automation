@@ -7,7 +7,9 @@ from app.db.database import AsyncSessionLocal
 from app.models.specification import APISpecification
 from app.models.scenario import TestScenario, ScenarioStep
 from app.models.test_result import TestResult
+from app.models.auth_profile import AuthProfile, TestIdentity
 from app.services.ai_generator import get_ai_generator
+from app.services.auth_runtime import AuthenticationError, build_auth_session
 from app.services.workflow_executor import unified_pipeline_app
 import time
 import json
@@ -67,7 +69,7 @@ async def generate_pipeline_task(ctx, spec_id: int):
 # ---------------------------------------------------------
 # TASK 2: EXECUTE PIPELINE (LangGraph Phase)
 # ---------------------------------------------------------
-async def run_pipeline_task(ctx, pipeline_id: int, base_url: str, auth_config: dict, verify_tls: bool = True):
+async def run_pipeline_task(ctx, pipeline_id: int, base_url: str, test_identity_id: int | None = None, verify_tls: bool = True):
     print(f"[WORKER] Executing Pipeline ID: {pipeline_id}")
     async with AsyncSessionLocal() as db:
         stmt = select(TestScenario).options(selectinload(TestScenario.steps).selectinload(ScenarioStep.endpoint)).filter(TestScenario.id == pipeline_id)
@@ -75,6 +77,26 @@ async def run_pipeline_task(ctx, pipeline_id: int, base_url: str, auth_config: d
         scenario = result.scalar_one_or_none()
 
         if not scenario: return {"status": "failed", "error": "Pipeline not found"}
+
+        auth_session = None
+        if test_identity_id:
+            stmt = (
+                select(TestIdentity)
+                .options(selectinload(TestIdentity.auth_profile))
+                .join(AuthProfile)
+                .filter(TestIdentity.id == test_identity_id)
+            )
+            result = await db.execute(stmt)
+            identity = result.scalar_one_or_none()
+            if not identity:
+                return {"status": "failed", "error": "Test identity not found"}
+            try:
+                auth_session = build_auth_session(identity.auth_profile, identity, base_url)
+                import httpx
+                async with httpx.AsyncClient(timeout=15.0, follow_redirects=False, verify=verify_tls) as auth_client:
+                    await auth_session.authenticate(auth_client)
+            except AuthenticationError as exc:
+                return {"status": "failed", "error": f"Authentication failed: {exc}"}
 
         scenario.steps.sort(key=lambda x: x.step_order)
         current_timestamp = str(int(time.time()))
@@ -110,7 +132,7 @@ async def run_pipeline_task(ctx, pipeline_id: int, base_url: str, auth_config: d
             "cleanup_warnings": [],
             "base_url": base_url,
             "verify_tls": verify_tls,
-            "auth_config": auth_config
+            "auth_session": auth_session,
         }
 
         # RUN LANGGRAPH

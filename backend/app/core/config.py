@@ -14,6 +14,7 @@ class Settings:
     ALLOW_INTERNAL_TARGETS: bool = os.getenv("ALLOW_INTERNAL_TARGETS", "false").lower() in {"1", "true", "yes", "on"}
     MAX_SPEC_DOWNLOAD_BYTES: int = int(os.getenv("MAX_SPEC_DOWNLOAD_BYTES", str(5 * 1024 * 1024)))
     SPEC_DOWNLOAD_TIMEOUT_SECONDS: float = float(os.getenv("SPEC_DOWNLOAD_TIMEOUT_SECONDS", "15"))
+    AUTH_SECRETS_KEY: str | None = os.getenv("AUTH_SECRETS_KEY")
 
     DEBUG: bool = os.getenv("DEBUG", "false").lower() in {"1", "true", "yes", "on"}
     LANGSMITH_TRACING: bool = os.getenv("LANGSMITH_TRACING", "false").lower() in {"1", "true", "yes", "on"}
