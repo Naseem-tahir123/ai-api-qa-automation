@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Dict, Any, Optional
 
 class ExtractRule(BaseModel):
@@ -33,6 +33,34 @@ class ScenarioStepCreate(BaseModel):
         description = "HTTP status code that is expected from the API response"
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_ai_field_names(cls, value: Any) -> Any:
+        """Accept common LLM synonyms before structured-output validation.
+
+        The persisted model intentionally uses endpoint_* and payload.  Models
+        frequently return the more conversational method/path/request_body
+        names, so normalize those names instead of rejecting an otherwise
+        usable scenario plan.
+        """
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        aliases = {
+            "method": "endpoint_method",
+            "path": "endpoint_path",
+            "request_body": "payload",
+        }
+        for source, target in aliases.items():
+            if target not in normalized and source in normalized:
+                normalized[target] = normalized[source]
+
+        # This is only a safety net for imperfect model output.  The prompt
+        # below still requires the model to supply an explicit status code.
+        normalized.setdefault("expected_status", 200)
+        return normalized
+
 
 class TestScenarioCreate(BaseModel):
     name: str = Field(
@@ -40,6 +68,19 @@ class TestScenarioCreate(BaseModel):
     )
     description: str
     steps: List[ScenarioStepCreate]
+
+    @model_validator(mode="before")
+    @classmethod
+    def supply_description_for_legacy_ai_output(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        normalized.setdefault(
+            "description",
+            f"Stateful API workflow: {normalized.get('name', 'AI-generated scenario')}.",
+        )
+        return normalized
 
 
 class AITestScenarioPlan(BaseModel):

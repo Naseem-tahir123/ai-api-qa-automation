@@ -3,6 +3,7 @@ import json  # <-- Used to convert Python dictionaries into valid JSON strings
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from app.schemas.test_case import AITestPlan
+from app.schemas.scenario import AITestScenarioPlan
 
 
 class AITestGenerator:
@@ -17,6 +18,11 @@ class AITestGenerator:
         self.structured_llm = self.llm.with_structured_output(
             AITestPlan,
             method="json_mode"
+        )
+
+        self.scenario_llm = self.llm.with_structured_output(
+            AITestScenarioPlan,
+            method = "json_mode"
         )
 
     def generate_test_cases(
@@ -123,6 +129,85 @@ class AITestGenerator:
         },
         )
         return result.test_cases
+
+    def generate_scenarios(self, spec_endpoints_info: list):
+        """
+        Takes a list of all endpoints in a spec and generates chained test scenarios.
+        """
+        endpoints_json_str = json.dumps(spec_endpoints_info, indent=2)
+
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                """
+                You are a Senior Software QA Architect.
+                Your task is to analyze a list of API endpoints and design stateful, chained integration test scenarios (Workflows).
+                
+                A scenario is a sequence of steps (API calls) that represent a real user journey.
+                For example: Create a user -> Fetch the user -> Delete the user.
+                
+                You have a GLOBAL MEMORY during execution.
+                1. Use `extract_rules` to pull data from a response and save it to memory. 
+                   Format: {{"json_path": "$.id", "save_as": "created_user_id"}}
+                2. Use `inject_rules` to insert memory variables into subsequent requests.
+                   Format: {{"target": "path", "field": "id", "use_memory": "created_user_id"}} 
+                   (target can be 'path', 'query', 'payload', or 'header')
+
+                Generate ONLY valid JSON matching the expected schema.
+                """
+            ),
+            (
+                "human",
+                """
+                Analyze the following API endpoints and generate 2 to 3 logical Stateful Test Scenarios.
+                
+                API Endpoints:
+                {endpoints_data}
+
+                IMPORTANT RULES:
+                1. Identify relationships (e.g., POST creates an item, GET fetches it by ID, DELETE removes it).
+                2. Create a "Happy Path CRUD" scenario if applicable.
+                3. Create an "Auth Flow" scenario if there are login/logout endpoints.
+                4. For dynamic fields in payload (like email or username), use the exact string "{{{{TIMESTAMP}}}}" so the executor can make it unique.
+                5. Ensure step_order starts at 1 and increments sequentially.
+                6. Think like a hacker/QA mapping out an end-to-end API integration test.
+                7. Every scenario MUST include `name`, `description`, and `steps`.
+                8. Every step MUST include `endpoint_method`, `endpoint_path`, and integer `expected_status`.
+                   Do NOT use `method`, `path`, `request_body`, or `request_headers` as field names.
+                9. Put a JSON request body only in `payload`. Use `inject_rules` with target `header`
+                   for dynamic headers such as authorization tokens.
+
+                Output a JSON object with a root key "scenarios".
+
+                Each scenario has this exact shape:
+                {{
+                  "name": "...",
+                  "description": "...",
+                  "steps": [{{
+                    "endpoint_method": "POST",
+                    "endpoint_path": "/api/resource",
+                    "payload": {{}},
+                    "expected_status": 201,
+                    "extract_rules": [],
+                    "inject_rules": []
+                  }}]
+                }}
+                """
+            )
+        ])
+
+        chain = prompt | self.scenario_llm
+
+        result = chain.invoke(
+            {"endpoints_data": endpoints_json_str},
+            config={
+                "run_name": "Generate Stateful Scenarios",
+                "tags": ["scenario_generation"],
+            },
+        )
+        return result.scenarios
+    
+    
 
 
 def get_ai_generator():

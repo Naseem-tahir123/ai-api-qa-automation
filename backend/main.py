@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api.routes import auth, projects, specifications, test_cases, test_execution, reports
+from app.api.routes import auth, projects, specifications, test_cases, test_execution, reports, scenarios
 from app.core.exceptions import register_exception_handlers
 
 
@@ -18,6 +18,7 @@ app.include_router(specifications.router)
 app.include_router(test_cases.router)
 app.include_router(test_execution.router)
 app.include_router(reports.router)
+app.include_router(scenarios.router)
 
 if __name__ == "__main__":
     import uvicorn
