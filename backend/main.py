@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
-from app.api.routes import auth, projects, specifications, test_cases, test_execution, reports
+from app.api.routes import auth, projects, specifications, test_cases, test_execution, reports, workflows
 from app.core.exceptions import register_exception_handlers
 
 
@@ -30,6 +30,7 @@ app.include_router(specifications.router)
 app.include_router(test_cases.router)
 app.include_router(test_execution.router)
 app.include_router(reports.router)
+app.include_router(workflows.router)
 
 if __name__ == "__main__":
     import uvicorn
