@@ -107,7 +107,8 @@ async def upload_specification(
         project_id=project_id,
         version=version,
         filename=file.filename,
-        file_path=file_path
+        file_path=file_path,
+        source_type="file",
     )
 
     db.add(new_spec)
@@ -123,6 +124,18 @@ async def upload_specification(
         )
 
     return new_spec
+
+
+@router.get("/{project_id}/specifications", response_model=List[APISpecificationResponse])
+async def list_specifications(project_id: int, db: AsyncSession = Depends(get_db)):
+    if not await db.get(Project, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    result = await db.execute(
+        select(APISpecification)
+        .where(APISpecification.project_id == project_id)
+        .order_by(APISpecification.uploaded_at.desc())
+    )
+    return result.scalars().all()
 
 
 @router.post("/{project_id}/specifications/import-url", response_model=APISpecificationResponse, status_code=201)

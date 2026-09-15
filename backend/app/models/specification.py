@@ -12,6 +12,8 @@ class APISpecification(Base):
     version = Column(String, nullable=False, default="v1")
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)  # Local path of the uploaded file.
+    source_type = Column(String, nullable=False, default="file", server_default="file")
+    source_url = Column(String, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Each API specification belongs to one project.

@@ -1,25 +1,52 @@
 import os
 import json  # <-- Used to convert Python dictionaries into valid JSON strings
-from langchain_openai import ChatOpenAI
+# from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 # from app.schemas.test_case import AITestPlan
 from app.schemas.scenario import AITestScenarioPlan
 
 
+def _inline_json_schema(schema: dict) -> dict:
+    definitions = schema.get("$defs", {})
+
+    def resolve(value):
+        if isinstance(value, dict):
+            reference = value.get("$ref")
+            if reference:
+                return resolve(definitions[reference.rsplit("/", 1)[-1]])
+            return {
+                key: resolve(item)
+                for key, item in value.items()
+                if key not in {"$defs", "$ref"}
+            }
+        if isinstance(value, list):
+            return [resolve(item) for item in value]
+        return value
+
+    return resolve(schema)
+
+
 class AITestGenerator:
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
+        # OpenAI configuration kept here as a reference while development uses Gemini.
+        # self.llm = ChatOpenAI(
+        #     model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        #     temperature=0.2,
+        #     api_key=os.getenv("OPENAI_API_KEY"),
+        #     max_retries=int(os.getenv("OPENAI_MAX_RETRIES", "2")),
+        # )
+        self.llm = ChatGoogleGenerativeAI(
+            model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
             temperature=0.2,
-            api_key=os.getenv("OPENAI_API_KEY")
+            google_api_key=os.getenv("GEMINI_API_KEY"),
+            max_retries=int(os.getenv("GEMINI_MAX_RETRIES", "2")),
+            # client_options={"api_version": "v1beta"}
         )
 
-        self.scenario_llm = self.llm.with_structured_output(
-            AITestScenarioPlan,
-            # Fall back to function calling because our Pydantic schema contains
-            # unstructured types like Dict[str, Any] which OpenAI's strict
-            # 'json_schema' method does not support.
-            method="function_calling",
+        self.scenario_llm = self.llm.bind(
+            response_mime_type="application/json",
+            response_schema=_inline_json_schema(AITestScenarioPlan.model_json_schema()),
         )
 
 
@@ -78,13 +105,38 @@ class AITestGenerator:
 
         chain = prompt | self.scenario_llm
 
-        result = chain.invoke(
-            {"endpoints_data": endpoints_json_str, "test_intents": intents_json_str, "domain": domain},
-            config={
-                "run_name": "Generate Unified Pipelines",
-                "tags": ["pipeline_generation"],
-            },
-        )
+        try:
+            response = chain.invoke(
+                {"endpoints_data": endpoints_json_str, "test_intents": intents_json_str, "domain": domain},
+                config={
+                    "run_name": "Generate Unified Pipelines",
+                    "tags": ["pipeline_generation"],
+                },
+            )
+            content = response.content
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in content
+                )
+            result = AITestScenarioPlan.model_validate(json.loads(content))
+        except Exception as exc:
+            message = str(exc)
+            normalized = message.lower()
+            if any(
+                marker in normalized
+                for marker in ("insufficient_quota", "billing_hard_limit", "exceeded your current quota")
+            ):
+                raise RuntimeError(
+                    "Gemini quota is exhausted. Check the API key usage limits or configure "
+                    "a different GEMINI_API_KEY before generating the pipeline."
+                ) from exc
+            if "429" in normalized or "rate_limit" in normalized:
+                raise RuntimeError(
+                    "Gemini rate limit persisted after retries. Wait and retry the job, or reduce "
+                    "pipeline generation concurrency."
+                ) from exc
+            raise
         return result.scenarios
     
     

@@ -84,7 +84,7 @@ class AuthSession:
         try:
             response = await client.request(
                 method=config.get("method", "POST").upper(),
-                url=f"{self.base_url}{config['login_path']}",
+                url=f"{self.base_url}/{config['login_path'].lstrip('/')}",
                 json=payload,
             )
             response.raise_for_status()
@@ -114,7 +114,7 @@ class AuthSession:
         try:
             response = await client.request(
                 method=config.get("refresh_method", "POST").upper(),
-                url=f"{self.base_url}{config['refresh_path']}",
+                url=f"{self.base_url}/{config['refresh_path'].lstrip('/')}",
                 json=payload,
             )
             response.raise_for_status()

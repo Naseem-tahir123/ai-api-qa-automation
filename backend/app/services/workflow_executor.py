@@ -69,7 +69,7 @@ async def _execute_single_step(step: Dict[str, Any], memory: Dict[str, Any], bas
         elif target == "payload":
             payload[field] = mem_val
 
-    full_url = f"{base_url.rstrip('/')}{path}"
+    full_url = f"{base_url.rstrip('/')}/{path.lstrip('/')}"
     start_time = time.time()
     actual_status, response_data, error_msg = None, None, None
 

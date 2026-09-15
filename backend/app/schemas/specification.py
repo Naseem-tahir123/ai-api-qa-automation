@@ -7,8 +7,8 @@ class APISpecificationResponse(BaseModel):
     project_id: int
     version: str
     filename: str
-    source_type: str
-    source_url: str | None
+    source_type: str = "file"
+    source_url: str | None = None
     uploaded_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

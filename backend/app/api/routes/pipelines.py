@@ -46,6 +46,25 @@ class PipelineExecutionRequest(BaseModel):
             raise ValueError("test_identity_id requires environment_id.")
         return self
 
+
+@router.get("/specifications/{spec_id}")
+async def list_pipelines(spec_id: int, db: AsyncSession = Depends(get_db)):
+    """Return generated pipelines so the UI can select one for safe execution."""
+    result = await db.execute(
+        select(TestScenario)
+        .options(selectinload(TestScenario.steps).selectinload(ScenarioStep.endpoint))
+        .where(TestScenario.specification_id == spec_id)
+        .order_by(TestScenario.id.desc())
+    )
+    scenarios = result.scalars().unique().all()
+    return [{
+        "id": scenario.id,
+        "name": scenario.name,
+        "description": scenario.description,
+        "steps": len(scenario.steps),
+        "has_destructive_step": any(step.endpoint.method.upper() == "DELETE" for step in scenario.steps),
+    } for scenario in scenarios]
+
 # 1. GENERATE PIPELINE (AI Phase)
 @router.post("/generate/{spec_id}", status_code=202)
 async def generate_pipeline(spec_id: int, db: AsyncSession = Depends(get_db), redis = Depends(get_redis_pool)):
@@ -117,6 +136,49 @@ async def run_pipeline(
         "run_pipeline_task", pipeline_id, target_base_url, request.test_identity_id, verify_tls
     )
     return {"message": "Pipeline execution started.", "task_id": job.job_id, "status": "queued"}
+
+
+@router.post("/run-all/specifications/{spec_id}", status_code=202)
+async def run_all_pipelines(
+    spec_id: int,
+    request: PipelineExecutionRequest,
+    db: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis_pool),
+):
+    """Queue a complete, explicitly approved regression run for one spec."""
+    result = await db.execute(
+        select(APISpecification)
+        .options(selectinload(APISpecification.endpoints))
+        .where(APISpecification.id == spec_id)
+    )
+    spec = result.scalar_one_or_none()
+    if not spec:
+        raise HTTPException(status_code=404, detail="Specification not found")
+    scenarios_result = await db.execute(
+        select(TestScenario)
+        .options(selectinload(TestScenario.steps).selectinload(ScenarioStep.endpoint))
+        .where(TestScenario.specification_id == spec_id)
+    )
+    scenarios = scenarios_result.scalars().unique().all()
+    if not scenarios:
+        raise HTTPException(status_code=409, detail="Generate pipelines before running the suite.")
+    if any(step.endpoint.method.upper() == "DELETE" for scenario in scenarios for step in scenario.steps) and not request.allow_destructive:
+        raise HTTPException(status_code=403, detail="This suite contains destructive steps. Set allow_destructive=true after approving the target environment.")
+
+    target_base_url, verify_tls = request.target_base_url, True
+    if request.environment_id:
+        environment = await db.scalar(select(ProjectEnvironment).where(ProjectEnvironment.id == request.environment_id, ProjectEnvironment.project_id == spec.project_id))
+        if not environment:
+            raise HTTPException(status_code=404, detail="Environment not found for this specification's project")
+        if environment.is_production and not request.allow_production:
+            raise HTTPException(status_code=403, detail="Production execution requires allow_production=true.")
+        target_base_url, verify_tls = environment.base_url, environment.verify_tls
+        if request.test_identity_id:
+            identity = await db.scalar(select(TestIdentity).join(AuthProfile).where(TestIdentity.id == request.test_identity_id, AuthProfile.environment_id == environment.id))
+            if not identity:
+                raise HTTPException(status_code=404, detail="Test identity not found for this environment")
+    job = await redis.enqueue_job("run_all_pipelines_task", spec_id, target_base_url, request.test_identity_id, verify_tls)
+    return {"message": "Full pipeline suite execution started.", "task_id": job.job_id, "status": "queued", "pipelines": len(scenarios)}
 
 # 3. CHECK TASK STATUS
 @router.get("/tasks/{task_id}")

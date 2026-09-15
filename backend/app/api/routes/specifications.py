@@ -56,3 +56,13 @@ async def parse_specification(spec_id: int, db: AsyncSession = Depends(get_db)):
 
     # 5. Return the newly saved endpoints.
     return new_db_endpoints
+
+
+@router.get("/{spec_id}/endpoints", response_model=List[EndpointResponse])
+async def list_parsed_endpoints(spec_id: int, db: AsyncSession = Depends(get_db)):
+    if not await db.get(APISpecification, spec_id):
+        raise HTTPException(status_code=404, detail="Specification not found")
+    result = await db.execute(
+        select(Endpoint).where(Endpoint.specification_id == spec_id).order_by(Endpoint.path, Endpoint.method)
+    )
+    return result.scalars().all()

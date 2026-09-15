@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/qa", tags=["QA Planning"], dependencies=[Depe
 
 
 async def _spec(db: AsyncSession, spec_id: int) -> APISpecification:
-    result = await db.execute(select(APISpecification).options(selectinload(APISpecification.endpoints)).where(APISpecification.id == spec_id))
+    result = await db.execute(select(APISpecification).options(selectinload(APISpecification.endpoints), selectinload(APISpecification.qa_ir_snapshot)).where(APISpecification.id == spec_id))
     spec = result.scalar_one_or_none()
     if not spec:
         raise HTTPException(status_code=404, detail="Specification not found")
