@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import time
 from arq.connections import RedisSettings
@@ -17,6 +18,8 @@ from app.services.auth_runtime import AuthenticationError, build_auth_session
 from app.services.coverage_planner import plan_coverage
 from app.services.qa_ir import build_qa_ir
 from app.services.workflow_executor import unified_pipeline_app
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------
@@ -200,8 +203,9 @@ async def generate_pipeline_task(ctx, spec_id: int):
             }
 
         except Exception as e:
+            logger.exception(f"generate_pipeline_task failed")
             await db.rollback()
-            return {"status": "failed", "error": str(e)}
+            return {"status": "failed", "error": str(e)[:1000]}
 
 
 # ---------------------------------------------------------

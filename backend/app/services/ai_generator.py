@@ -1,10 +1,25 @@
+import time
+import logging
+import random
 import os
-import json  # <-- Used to convert Python dictionaries into valid JSON strings
-# from langchain_openai import ChatOpenAI
+import json
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
-# from app.schemas.test_case import AITestPlan
 from app.schemas.scenario import AITestScenarioPlan
+
+logger = logging.getLogger(__name__)
+
+_TRANSIENT_ERRORS = ("503", "unavailable", "overloaded", "500", "internal error", "timeout", "deadline")
+_QUOTA_ERRORS = ("resource_exhausted", "quota", "429", "insufficient_quota")
+
+
+def _is_transient(exc: Exception) -> bool:
+    text = str(exc).lower()
+    if any(marker in text for marker in _QUOTA_ERRORS):
+        # Quota khatam ho chuki — isi model par retry karne se faida nahi.
+        return False
+    return any(marker in text for marker in _TRANSIENT_ERRORS)
 
 
 def _inline_json_schema(schema: dict) -> dict:
@@ -29,27 +44,100 @@ def _inline_json_schema(schema: dict) -> dict:
 
 class AITestGenerator:
     def __init__(self):
-        # OpenAI configuration kept here as a reference while development uses Gemini.
-        # self.llm = ChatOpenAI(
-        #     model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        #     temperature=0.2,
-        #     api_key=os.getenv("OPENAI_API_KEY"),
-        #     max_retries=int(os.getenv("OPENAI_MAX_RETRIES", "2")),
-        # )
-        self.llm = ChatGoogleGenerativeAI(
-            model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
-            temperature=0.2,
-            google_api_key=os.getenv("GEMINI_API_KEY"),
-            max_retries=int(os.getenv("GEMINI_MAX_RETRIES", "2")),
-            # client_options={"api_version": "v1beta"}
-        )
+        self.scenario_schema = _inline_json_schema(AITestScenarioPlan.model_json_schema())
+        self._cached_gemini_llms = {}
+        self._cached_groq_llms = {}
 
-        self.scenario_llm = self.llm.bind(
-            response_mime_type="application/json",
-            response_schema=_inline_json_schema(AITestScenarioPlan.model_json_schema()),
-        )
+        # Fallback chain: upar se neeche try hota hai.
+        # Pehle Gemini ke generous (Lite) models, phir agar sab fail hon to Groq.
+        self._provider_chain = [
+            ("gemini", "gemini-3.5-flash-lite"),
+            ("gemini", "gemini-2.5-flash-lite"),
+            ("groq", "llama-3.3-70b-versatile"),
+        ]
 
+    # -------------------- Gemini --------------------
+    def _get_gemini_llm(self, model_name: str):
+        if model_name not in self._cached_gemini_llms:
+            base_llm = ChatGoogleGenerativeAI(
+                model=model_name,
+                temperature=0.2,
+                google_api_key=os.getenv("GEMINI_API_KEY"),
+                max_retries=0,
+            )
+            self._cached_gemini_llms[model_name] = base_llm.bind(
+                response_mime_type="application/json",
+                response_schema=self.scenario_schema,
+            )
+        return self._cached_gemini_llms[model_name]
 
+    def _invoke_gemini(self, model_name: str, prompt_value) -> AITestScenarioPlan:
+        llm = self._get_gemini_llm(model_name)
+        response = llm.invoke(prompt_value)
+        content = response.content
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "") if isinstance(part, dict) else str(part)
+                for part in content
+            )
+        return AITestScenarioPlan.model_validate(json.loads(content))
+
+    # -------------------- Groq --------------------
+    def _get_groq_llm(self, model_name: str):
+        if model_name not in self._cached_groq_llms:
+            base_llm = ChatGroq(
+                model=model_name,
+                temperature=0.2,
+                api_key=os.getenv("GROQ_API_KEY"),
+                max_retries=0,
+            )
+            self._cached_groq_llms[model_name] = base_llm.with_structured_output(
+                AITestScenarioPlan, method="function_calling"
+            )
+        return self._cached_groq_llms[model_name]
+
+    def _invoke_groq(self, model_name: str, prompt_value) -> AITestScenarioPlan:
+        llm = self._get_groq_llm(model_name)
+        # with_structured_output seedha parsed AITestScenarioPlan object deta hai.
+        return llm.invoke(prompt_value)
+
+    # -------------------- Unified retry + fallback --------------------
+    def _invoke_with_retry_and_fallback(self, prompt_value) -> AITestScenarioPlan:
+        MAX_TRIES_PER_PROVIDER = 3
+        last_error = None
+
+        for provider_type, model_name in self._provider_chain:
+            invoke_fn = self._invoke_gemini if provider_type == "gemini" else self._invoke_groq
+
+            for attempt in range(MAX_TRIES_PER_PROVIDER):
+                try:
+                    logger.info(f"Trying {provider_type}:{model_name}, attempt={attempt + 1}")
+                    return invoke_fn(model_name, prompt_value)
+                except Exception as exc:
+                    last_error = exc
+
+                    if not _is_transient(exc):
+                        logger.warning(
+                            f"{provider_type}:{model_name} permanent error, "
+                            f"moving to next provider: {exc}"
+                        )
+                        break  # is provider ko chhor kar agle par jao
+
+                    wait_seconds = (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        f"{provider_type}:{model_name} busy (attempt {attempt + 1}/"
+                        f"{MAX_TRIES_PER_PROVIDER}), waiting {wait_seconds:.1f}s: {exc}"
+                    )
+                    time.sleep(wait_seconds)
+            else:
+                # yeh tab chalega jab andar wala loop 'break' na ho, balki saare
+                # attempts khatam ho jayein (yani transient errors hi thay)
+                logger.warning(f"{provider_type}:{model_name} failed all retries, trying next provider...")
+                continue
+
+        raise RuntimeError(f"All providers in fallback chain failed. Last error: {last_error}")
+
+    # -------------------- Public API --------------------
     def generate_scenarios(self, spec_endpoints_info: list, intents: list | None = None, domain: str = "API"):
         """
         Takes a list of all endpoints in a spec and generates Unified Smart Pipelines.
@@ -63,10 +151,10 @@ class AITestGenerator:
                 """
                 You are an Elite QA Architect designing a Unified Smart Pipeline for API testing.
                 Your task is to analyze API endpoints and build robust, chained Test Scenarios.
-                
+
                 Each Scenario MUST follow this 3-Layer Unified Pipeline Architecture:
                 1. SETUP (step_type: 'setup'): Create resources or authenticate. Extract IDs/tokens to memory.
-                2. TEST (step_type: 'test'): Bombard the created resource with multiple tests. 
+                2. TEST (step_type: 'test'): Bombard the created resource with multiple tests.
                    - Generate Positive, Negative, Boundary, and Edge case tests using the extracted memory.
                    - Set `mutates_state = true` if the test modifies the resource (PUT/PATCH/DELETE).
                    - Set `mutates_state = false` for safe tests (GET or invalid payloads that will be rejected).
@@ -83,7 +171,7 @@ class AITestGenerator:
                 "human",
                 """
                 Analyze the following API endpoints for the {domain} domain and generate 1 to 3 Unified Smart Pipelines (Scenarios).
-                
+
                 API Endpoints:
                 {endpoints_data}
 
@@ -97,49 +185,30 @@ class AITestGenerator:
                 4. Always assign the correct `step_type` ('setup', 'test', or 'teardown').
                 5. Make sure variables saved in `extract_rules` precisely match the `use_memory` in `inject_rules`.
                 6. Do NOT put hardcoded IDs in path_params; use `inject_rules` instead.
-                
+
                 Output a JSON object with a root key "scenarios" containing the list of pipelines.
                 """
             )
         ])
 
-        chain = prompt | self.scenario_llm
+        prompt_value = prompt.invoke({
+            "endpoints_data": endpoints_json_str,
+            "test_intents": intents_json_str,
+            "domain": domain,
+        })
 
         try:
-            response = chain.invoke(
-                {"endpoints_data": endpoints_json_str, "test_intents": intents_json_str, "domain": domain},
-                config={
-                    "run_name": "Generate Unified Pipelines",
-                    "tags": ["pipeline_generation"],
-                },
-            )
-            content = response.content
-            if isinstance(content, list):
-                content = "".join(
-                    part.get("text", "") if isinstance(part, dict) else str(part)
-                    for part in content
-                )
-            result = AITestScenarioPlan.model_validate(json.loads(content))
+            result = self._invoke_with_retry_and_fallback(prompt_value)
         except Exception as exc:
-            message = str(exc)
-            normalized = message.lower()
-            if any(
-                marker in normalized
-                for marker in ("insufficient_quota", "billing_hard_limit", "exceeded your current quota")
-            ):
+            message = str(exc).lower()
+            if any(marker in message for marker in _QUOTA_ERRORS):
                 raise RuntimeError(
-                    "Gemini quota is exhausted. Check the API key usage limits or configure "
-                    "a different GEMINI_API_KEY before generating the pipeline."
-                ) from exc
-            if "429" in normalized or "rate_limit" in normalized:
-                raise RuntimeError(
-                    "Gemini rate limit persisted after retries. Wait and retry the job, or reduce "
-                    "pipeline generation concurrency."
+                    "All configured AI providers hit their quota/rate limits. "
+                    "Check GEMINI_API_KEY and GROQ_API_KEY usage limits, or add another provider."
                 ) from exc
             raise
+
         return result.scenarios
-    
-    
 
 
 def get_ai_generator():
